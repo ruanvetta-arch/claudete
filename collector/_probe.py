@@ -1,4 +1,4 @@
-"""Sonda temporária para descobrir a estrutura das fontes (roda no Actions)."""
+"""Sonda temporária (roda no Actions)."""
 import json
 import re
 import traceback
@@ -20,78 +20,65 @@ def sec(nome, fn):
         traceback.print_exc()
 
 
-def vivareal():
-    u = ("https://glue-api.vivareal.com/v2/listings?addressCity=Bras%C3%ADlia&addressState=Distrito%20Federal"
-         "&addressLocationId=BR%3EDistrito%20Federal%3ENULL%3EBrasilia&business=RENTAL&categoryPage=RESULT"
-         "&listingType=USED&unitTypes=HOME&unitTypesV3=HOME&usageTypes=RESIDENTIAL&bedrooms=2&size=24&from=0"
-         "&sort=updatedAt%20DESC&includeFields=search(result(listings(listing(id,title,address,bedrooms,bathrooms,"
-         "parkingSpaces,usableAreas,totalAreas,pricingInfos,amenities,images,updatedAt,createdAt,unitTypes),"
-         "link(href),account(name)),totalCount))")
-    r = g(u, **{"x-domain": "www.vivareal.com.br", "referer": "https://www.vivareal.com.br/", "origin": "https://www.vivareal.com.br"})
-    print("status", r.status_code)
-    j = r.json()
-    print("keys", list(j.keys()), "search keys", list(j.get("search", {}).keys()))
-    res = j["search"]["result"]
-    print("result keys", list(res.keys()))
-    print("n", len(res.get("listings", [])), "total", j["search"].get("totalCount"))
-    print("sample", json.dumps(res["listings"][0], ensure_ascii=False)[:2500])
+def olx_ads(url):
+    t = g(url).text
+    chunks = re.findall(r'self\.__next_f\.push\(\[1,"((?:[^"\\]|\\.)*)"\]\)', t, re.S)
+    big = "".join(json.loads('"' + c + '"') for c in chunks)
+    i = big.find('"ads":[')
+    if i < 0:
+        return None, big[:500]
+    # extrai o array balanceado
+    j = i + len('"ads":')
+    depth = 0
+    k = j
+    while k < len(big):
+        ch = big[k]
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                break
+        k += 1
+    arr = json.loads(big[j:k + 1])
+    m = re.search(r'"totalOfAds":(\d+)', big)
+    return arr, (m.group(1) if m else None)
 
 
 def olx():
-    r = g("https://www.olx.com.br/imoveis/aluguel/casas/estado-df?ros=2")
-    t = r.text
-    print("status", r.status_code, len(t))
-    m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', t, re.S)
-    print("nextdata", bool(m))
-    if m:
-        d = json.loads(m.group(1))
-        pp = d.get("props", {}).get("pageProps", {})
-        print("pp keys", list(pp.keys())[:30])
-        s = json.dumps(pp, ensure_ascii=False)
-        i = s.find('"ads"')
-        print("ads ctx", s[i:i + 2500])
-        return
-    # Next 13+ app router: dados em self.__next_f.push
-    chunks = re.findall(r'self\.__next_f\.push\(\[1,"(.*?)"\]\)', t, re.S)
-    print("next_f chunks", len(chunks))
-    big = "".join(c.encode().decode("unicode_escape", errors="ignore") for c in chunks)
-    for key in ['"ads":', '"listId"', '"adList"', '"subject"', '"price"']:
-        i = big.find(key)
-        print(key, i, big[i:i + 1500] if i > 0 else "")
-        if i > 0:
-            break
+    ads, total = olx_ads("https://www.olx.com.br/imoveis/aluguel/casas/estado-df?ros=2")
+    print("n", len(ads or []), "total", total)
+    print("AD0", json.dumps(ads[0], ensure_ascii=False)[:4000])
+    print("KEYS", sorted(ads[0].keys()))
+    ads2, _ = olx_ads("https://www.olx.com.br/imoveis/aluguel/casas/estado-df?ros=2&o=2")
+    print("p2 n", len(ads2 or []), "first", ads2[0]["listId"] if ads2 else None, "vs p1", ads[0]["listId"])
 
 
-def nestoria():
-    r = g("https://www.nestoria.com.br/distrito-federal/casas/aluguel?bedrooms=2&sort=newest")
-    t = r.text
-    print("status", r.status_code, len(t))
-    for pat in [r"__NEXT_DATA__", r"window\.__INITIAL_STATE__", r'"listings"', r"data-listing", r"wimoveis", r"dfimoveis", r"quintoandar", r'"lister_url"', r'"source"', r'application/ld\+json', r"listing-item", r'data-id']:
-        print(f"  {pat}: {len(re.findall(pat, t))}")
-    for key in ['"listings"', "__NEXT_DATA__", "window.__INITIAL"]:
-        i = t.find(key)
-        if i > 0:
-            print("ctx", key, t[i:i + 2000])
-            break
-    # mostra o primeiro bloco que pareça card
-    i = t.find("listing-item")
-    print("card ctx", t[i - 300:i + 2500] if i > 0 else "")
+def vivareal():
+    def q(frm, size=24):
+        u = ("https://glue-api.vivareal.com/v2/listings?addressCity=Bras%C3%ADlia&addressState=Distrito%20Federal"
+             "&addressLocationId=BR%3EDistrito%20Federal%3ENULL%3EBrasilia&business=RENTAL&categoryPage=RESULT"
+             "&listingType=USED&unitTypes=HOME,CONDOMINIUM&unitTypesV3=HOME,CONDOMINIUM&unitSubTypes=UnitSubType_NONE,SINGLE_STOREY_HOUSE,VILLAGE_HOUSE,KITNET,TWO_STORY_HOUSE|CONDOMINIUM&usageTypes=RESIDENTIAL"
+             f"&bedrooms=2&size={size}&from={frm}&sort=updatedAt%20DESC&includeFields=search(result(listings(listing(id,title,address,bedrooms,bathrooms,parkingSpaces,usableAreas,totalAreas,pricingInfos,amenities,images,updatedAt,createdAt,unitTypes,unitSubTypes,description),link(href,name),account(name)),totalCount),totalCount)&__vt=")
+        return g(u, **{"x-domain": "www.vivareal.com.br", "referer": "https://www.vivareal.com.br/", "origin": "https://www.vivareal.com.br"})
+    r = q(0)
+    print("status", r.status_code)
+    j = r.json()
+    print("top", json.dumps({k: (v if k != "search" else "...") for k, v in j.items()})[:300])
+    res = j["search"]["result"]
+    ls = res["listings"]
+    print("n", len(ls), "totalCount", j["search"].get("totalCount"), res.get("totalCount"))
+    types = {}
+    for x in ls:
+        for ut in x["listing"].get("unitTypes", []):
+            types[ut] = types.get(ut, 0) + 1
+    print("unitTypes", types)
+    print("L0", json.dumps(ls[0], ensure_ascii=False)[:3000])
+    r2 = q(24)
+    print("p2 status", r2.status_code, "n", len(r2.json()["search"]["result"]["listings"]))
+    r3 = q(0, 36)
+    print("size36 status", r3.status_code, r3.text[:150] if r3.status_code != 200 else len(r3.json()["search"]["result"]["listings"]))
 
 
-def mitula():
-    r = g("https://imoveis.mitula.com.br/imoveis/aluguel-casas-2-quartos-brasilia")
-    t = r.text
-    print("status", r.status_code, len(t))
-    for pat in [r"__NEXT_DATA__", r'"listings"', r"wimoveis", r"dfimoveis", r"data-source", r"application/ld\+json", r"listing-card", r'data-id']:
-        print(f"  {pat}: {len(re.findall(pat, t))}")
-    m = re.findall(r'<script type="application/ld\+json">(.*?)</script>', t, re.S)
-    for x in m[:3]:
-        print("ld", x[:1200])
-    i = t.find("listing-card")
-    print("card ctx", t[i - 300:i + 2500] if i > 0 else "")
-
-
-sec("VIVAREAL", vivareal)
 sec("OLX", olx)
-sec("NESTORIA", nestoria)
-sec("MITULA", mitula)
+sec("VIVAREAL", vivareal)
