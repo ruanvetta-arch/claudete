@@ -62,48 +62,78 @@ def completude(it: dict) -> int:
     return score
 
 
+def _dist_km(a: dict, b: dict) -> float | None:
+    import math
+    if not (a.get("lat") and a.get("lng") and b.get("lat") and b.get("lng")):
+        return None
+    dlat = math.radians(b["lat"] - a["lat"])
+    dlng = math.radians(b["lng"] - a["lng"])
+    la1, la2 = math.radians(a["lat"]), math.radians(b["lat"])
+    h = math.sin(dlat / 2) ** 2 + math.cos(la1) * math.cos(la2) * math.sin(dlng / 2) ** 2
+    return 6371 * 2 * math.asin(math.sqrt(h))
+
+
+def _chave_dedup(it: dict) -> str:
+    from common import slug
+    preco = round((it["preco"] or 0) / 50) * 50
+    return f"{slug(it.get('bairro') or '')}|{preco}|{it.get('quartos') or 0}"
+
+
+def _subgrupos_por_distancia(grupo: list[dict], limite_km: float = 1.5) -> list[list[dict]]:
+    """Separa anúncios que têm coordenadas e estão claramente longe uns dos outros."""
+    subs: list[list[dict]] = []
+    for it in grupo:
+        alvo = None
+        for s in subs:
+            ds = [_dist_km(it, o) for o in s]
+            conhecidas = [d for d in ds if d is not None]
+            if not conhecidas or min(conhecidas) <= limite_km:
+                alvo = s
+                break
+        if alvo is None:
+            subs.append([it])
+        else:
+            alvo.append(it)
+    return subs
+
+
 def deduplicar(itens: list[dict]) -> list[dict]:
     grupos: dict[str, list[dict]] = {}
     for it in itens:
-        sig = assinatura(it["regiao"], it["preco"], it["area_m2"], it["quartos"])
-        it["assinatura"] = sig
-        grupos.setdefault(sig, []).append(it)
+        it["assinatura"] = assinatura(it["regiao"], it["preco"], it["area_m2"], it["quartos"])
+        grupos.setdefault(_chave_dedup(it), []).append(it)
 
     resultado: list[dict] = []
-    for sig, grupo in grupos.items():
-        # Mesma assinatura e mesmo portal = anúncios distintos (ex.: casas iguais num condomínio)
-        por_portal: dict[str, list[dict]] = {}
-        for it in grupo:
-            por_portal.setdefault(it["portal"], []).append(it)
-        if len(por_portal) == 1:
-            for it in grupo:
-                it["tambem_em"] = []
-            resultado.extend(grupo)
-            continue
-        # Portais diferentes: funde em um só registro
-        grupo.sort(key=lambda x: (-completude(x), PRIORIDADE.get(x["portal"], 9)))
-        principal = dict(grupo[0])
-        tambem: dict[str, str] = {}
-        for o in grupo[1:]:
-            if o["portal"] != principal["portal"]:
-                tambem.setdefault(o["portal"], o["url"])
-        principal["tambem_em"] = [{"portal": p, "url": u} for p, u in tambem.items()]
-        # Enriquecimento com campos vazios
-        for o in grupo[1:]:
-            for k, v in o.items():
-                if principal.get(k) in (None, "", [], False) and v not in (None, "", [], False):
-                    if k not in ("id", "id_portal", "portal", "url", "tambem_em"):
-                        principal[k] = v
-        # Fotos: concatena únicas
-        fotos: list[str] = []
-        for o in grupo:
-            for f in o.get("fotos") or []:
-                if f not in fotos:
-                    fotos.append(f)
-        principal["fotos"] = fotos[:10]
-        # Junta ids secundários para o merge com histórico encontrar first_seen
-        principal["ids_fundidos"] = sorted({o["id"] for o in grupo})
-        resultado.append(principal)
+    for grupo0 in grupos.values():
+        for grupo in _subgrupos_por_distancia(grupo0):
+            if len(grupo) == 1:
+                grupo[0]["tambem_em"] = []
+                grupo[0]["anuncios"] = 1
+                resultado.append(grupo[0])
+                continue
+            # Mesma casa anunciada mais de uma vez (portais ou imobiliárias diferentes)
+            grupo.sort(key=lambda x: (-completude(x), PRIORIDADE.get(x["portal"], 9)))
+            principal = dict(grupo[0])
+            principal["tambem_em"] = [
+                {"portal": o["portal"], "anunciante": o.get("anunciante"), "url": o["url"]} for o in grupo[1:]
+            ]
+            principal["anuncios"] = len(grupo)
+            # Enriquecimento com campos vazios
+            for o in grupo[1:]:
+                for k, v in o.items():
+                    if principal.get(k) in (None, "", [], False) and v not in (None, "", [], False):
+                        if k not in ("id", "id_portal", "portal", "url", "tambem_em", "anuncios"):
+                            principal[k] = v
+            # Fotos: as do principal primeiro, depois as dos outros (únicas)
+            fotos: list[str] = []
+            for o in grupo:
+                for f in o.get("fotos") or []:
+                    if f not in fotos:
+                        fotos.append(f)
+            principal["fotos"] = fotos[:16]
+            # Junta ids secundários para o merge com histórico encontrar first_seen
+            principal["ids_fundidos"] = sorted({o["id"] for o in grupo})
+            resultado.append(principal)
     return resultado
 
 
@@ -218,11 +248,9 @@ def main() -> int:
     n_novos = 0
     for it in novos:
         ids = set(it.get("ids_fundidos") or []) | {it["id"]}
-        velho = None
-        for i in ids:
-            if i in antigos:
-                velho = antigos[i]
-                break
+        velhos = [antigos[i] for i in ids if i in antigos]
+        # Entre todos os anúncios fundidos, vale a entrada mais antiga na plataforma
+        velho = min(velhos, key=lambda v: v.get("first_seen_at") or "9") if velhos else None
         if velho:
             it["first_seen_at"] = velho.get("first_seen_at") or iso(hoje)
             if velho.get("preco") and velho["preco"] != it["preco"]:

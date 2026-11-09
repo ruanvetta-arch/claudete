@@ -81,6 +81,35 @@ header{position:sticky;top:0;z-index:20;background:rgba(246,247,244,.92);backdro
 .photos .dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.55)}
 .photos .dots i.on{background:#fff}
 .photos .empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--ink-3);font-weight:700;font-size:15px}
+.photos .nav{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.92);color:var(--ink);display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.photos .nav svg{width:22px;height:22px}
+.photos .nav.prev{left:10px}.photos .nav.next{right:10px}
+.photos .count{position:absolute;right:12px;bottom:10px;background:rgba(23,37,30,.72);color:#fff;font-size:13px;font-weight:800;padding:4px 9px;border-radius:999px;pointer-events:none}
+.photos .expand{position:absolute;left:12px;bottom:10px;background:rgba(23,37,30,.72);color:#fff;font-size:13px;font-weight:800;padding:5px 10px;border-radius:999px;display:inline-flex;align-items:center;gap:6px}
+.photos .expand svg{width:16px;height:16px}
+.photos img{cursor:zoom-in}
+/* Visualizador em tela cheia */
+.viewer{position:fixed;inset:0;z-index:60;background:#0d1511;display:none;flex-direction:column;color:#fff}
+.viewer.open{display:flex}
+.viewer .vtop{display:flex;align-items:center;justify-content:space-between;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;font-weight:800}
+.viewer .vtop .vinfo{font-size:16px;opacity:.9}
+.viewer .vtop button{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;font-size:22px;display:grid;place-items:center}
+.viewer .vtrack{flex:1;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;align-items:center}
+.viewer .vtrack::-webkit-scrollbar{display:none}
+.viewer .vtrack img{flex:none;width:100%;height:100%;object-fit:contain;scroll-snap-align:center}
+.viewer .vnav{position:absolute;top:50%;transform:translateY(-50%);width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;display:grid;place-items:center}
+.viewer .vnav svg{width:28px;height:28px}
+.viewer .vnav.prev{left:12px}.viewer .vnav.next{right:12px}
+.viewer .vbottom{padding:10px 16px calc(14px + var(--safe-b));display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:15px}
+.viewer .vbottom b{font-size:20px}
+.viewer .vbottom .btn{height:44px;background:var(--green);color:#fff}
+@media(hover:hover){.photos .nav{opacity:0;transition:opacity .15s}.photos:hover .nav{opacity:1}}
+.srcs{display:none;margin-top:6px;padding:8px 10px;background:var(--bg);border-radius:10px;font-size:14px}
+.srcs.open{display:block}
+.srcs a{display:block;padding:6px 0;color:var(--green-dark);font-weight:700;text-decoration:none}
+.srcs a+a{border-top:1px solid var(--line)}
+.meta .src{cursor:pointer}
+.meta .src u{text-decoration:none;border-bottom:1.5px dotted var(--ink-3)}
 .badge{position:absolute;top:12px;left:12px;display:inline-flex;align-items:center;gap:6px;background:var(--green);color:#fff;font-weight:800;font-size:13px;padding:6px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.18)}
 .badge.down{background:var(--rose);left:auto;right:12px}
 .fav{position:absolute;top:8px;right:8px;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.92);color:var(--ink-2);box-shadow:0 2px 8px rgba(0,0,0,.15)}
@@ -195,6 +224,14 @@ nav.bottom .cnt{position:absolute;margin-left:28px;margin-top:-4px;background:va
 </div>
 <div class="toast" id="toast"></div>
 
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Fotos da casa">
+  <div class="vtop"><span class="vinfo" id="vinfo"></span><button id="vclose" aria-label="Fechar fotos">✕</button></div>
+  <div class="vtrack" id="vtrack"></div>
+  <button class="vnav prev" id="vprev" aria-label="Foto anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <button class="vnav next" id="vnext" aria-label="Próxima foto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+  <div class="vbottom"><div id="vdesc"></div><a class="btn" id="vlink" target="_blank" rel="noopener">Ver anúncio</a></div>
+</div>
+
 <script>
 (() => {
 const $ = (s, el=document) => el.querySelector(s);
@@ -255,6 +292,15 @@ function relativo(iso){
   if(s<3600) return 'há '+Math.floor(s/60)+' min';
   if(s<86400) { const h=Math.floor(s/3600); return 'há '+h+(h===1?' hora':' horas'); }
   const d=Math.floor(s/86400); return 'há '+d+(d===1?' dia':' dias');
+}
+const MESES_CURTO = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+function hora(d){ return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function quandoEntrou(iso){
+  const d = new Date(iso); const hoje = new Date(); const ontem = new Date(hoje); ontem.setDate(hoje.getDate()-1);
+  const k = chaveDia(d);
+  if(k===chaveDia(hoje)) return 'Entrou hoje às '+hora(d);
+  if(k===chaveDia(ontem)) return 'Entrou ontem às '+hora(d);
+  return 'Entrou em '+d.getDate()+' '+MESES_CURTO[d.getMonth()]+(d.getFullYear()!==hoje.getFullYear()?' '+d.getFullYear():'')+' às '+hora(d);
 }
 
 // ---------- filtros ----------
@@ -334,13 +380,21 @@ function card(it){
   if(it.aceita_pet) pills.push('<span class="pill pet">Aceita pet</span>');
   if(it.mobiliada) pills.push('<span class="pill">Mobiliada</span>');
   if(it.churrasqueira) pills.push('<span class="pill">Churrasqueira</span>');
-  const outros = (it.tambem_em||[]).map(o=>o.portal);
-  const src = [it.portal, ...outros].join(' · ');
+  const outros = (it.tambem_em||[]);
+  const portais = [...new Set([it.portal, ...outros.map(o=>o.portal)])];
+  const nAn = it.anuncios || (outros.length+1);
+  const src = portais.join(' · ') + (nAn>1? ` · <u>${nAn} anúncios</u>`:'');
+  const srcList = nAn>1? `<div class="srcs" data-srcs>${[{portal:it.portal, anunciante:it.anunciante, url:it.url}, ...outros].map(o=>`<a href="${o.url}" target="_blank" rel="noopener">${o.portal}${o.anunciante?` — ${o.anunciante}`:''} ${ICON.ext.replace('<svg','<svg width="14" height="14" style="vertical-align:-2px"')}</a>`).join('')}</div>`:'';
   const msg = encodeURIComponent(`Olha essa casa: ${fmtBRL(it.preco)}/mês em ${it.bairro}${it.quartos?` · ${it.quartos} quartos`:''}${it.area_m2?` · ${it.area_m2} m²`:''}\n${it.url}`);
+  const arrow = (dir) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="${dir==='prev'?'M15 5l-7 7 7 7':'M9 5l7 7-7 7'}"/></svg>`;
   return `<article class="card${seen?' seen':''}" data-id="${it.id}">
     <div class="photos">
-      ${fotos.length? `<div class="track" data-track>${fotos.map((u,i)=>`<img src="${u}" alt="" loading="${i===0?'eager':'lazy'}" referrerpolicy="no-referrer" onerror="this.style.display='none'">`).join('')}</div>
-      ${fotos.length>1? `<div class="dots">${fotos.map((_,i)=>`<i class="${i===0?'on':''}"></i>`).join('')}</div>`:''}` : `<div class="empty">Sem foto</div>`}
+      ${fotos.length? `<div class="track" data-track>${fotos.map((u,i)=>`<img src="${u}" alt="Foto ${i+1} da casa" loading="${i===0?'eager':'lazy'}" referrerpolicy="no-referrer" data-open="${i}" onerror="this.style.display='none'">`).join('')}</div>
+      ${fotos.length>1? `<div class="dots">${fotos.map((_,i)=>`<i class="${i===0?'on':''}"></i>`).join('')}</div>
+      <button class="nav prev" data-prev aria-label="Foto anterior">${arrow('prev')}</button>
+      <button class="nav next" data-next aria-label="Próxima foto">${arrow('next')}</button>
+      <span class="count" data-count>1/${fotos.length}</span>`:''}
+      <button class="expand" data-open="0" aria-label="Ver fotos em tela cheia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Ampliar</button>` : `<div class="empty">Sem foto</div>`}
       ${novo? `<span class="badge">Nova</span>`:''}
       ${it.preco_anterior && it.preco_anterior>it.preco? `<span class="badge down">Baixou</span>`:''}
       <button class="fav" data-fav aria-pressed="${favs.has(it.id)}" aria-label="Favoritar">${favs.has(it.id)?ICON.heart:ICON.heartO}</button>
@@ -350,7 +404,8 @@ function card(it){
       <div class="where">${it.bairro}${it.regiao && norm(it.regiao)!==norm(it.bairro)? `<span>${it.regiao}</span>`:''}</div>
       <div class="feats">${feats.join('')}</div>
       ${pills.length?`<div class="pills">${pills.join('')}</div>`:''}
-      <div class="meta"><span class="src" title="${src}">${src}</span><span>${relativo(it.first_seen_at)}</span></div>
+      <div class="meta"><span class="src" data-src>${src}</span><span title="${relativo(it.first_seen_at)}">${quandoEntrou(it.first_seen_at)}</span></div>
+      ${srcList}
     </div>
     <div class="actions">
       <a class="btn primary" href="${it.url}" target="_blank" rel="noopener">Ver anúncio ${ICON.ext}</a>
@@ -418,8 +473,50 @@ function bindCard(el){
     $('[data-fav]', el).onclick = (e) => { e.preventDefault(); favs.has(id)? favs.delete(id): favs.add(id); store.set('favs',[...favs]); const b=e.currentTarget; b.setAttribute('aria-pressed', favs.has(id)); b.innerHTML = favs.has(id)?ICON.heart:ICON.heartO; renderTabs(); if(view==='favoritos') render(); toast(favs.has(id)?'Guardada nas favoritas':'Removida das favoritas'); };
     $('[data-hide]', el).onclick = () => { const was = hidden.has(id); was? hidden.delete(id): hidden.add(id); store.set('hidden',[...hidden]); render(); renderChips(); toast(was?'Casa de volta na lista':'Escondida. Veja em "Já vi".', was?null:()=>{ hidden.delete(id); store.set('hidden',[...hidden]); render(); renderChips(); }); };
     const track = $('[data-track]', el);
-    if(track){ const dots = el.querySelectorAll('.dots i'); track.addEventListener('scroll', () => { const i = Math.round(track.scrollLeft / track.clientWidth); dots.forEach((d,j)=>d.classList.toggle('on', j===i)); }, {passive:true}); }
+    if(track){
+      const dots = el.querySelectorAll('.dots i'); const count = $('[data-count]', el); const n = track.children.length;
+      const idx = () => Math.round(track.scrollLeft / track.clientWidth);
+      track.addEventListener('scroll', () => { const i = idx(); dots.forEach((d,j)=>d.classList.toggle('on', j===i)); if(count) count.textContent = (i+1)+'/'+n; }, {passive:true});
+      const go = (k) => track.scrollTo({left: Math.max(0, Math.min(n-1, idx()+k)) * track.clientWidth, behavior: 'smooth'});
+      const p = $('[data-prev]', el), nx = $('[data-next]', el);
+      if(p) p.onclick = (e) => { e.preventDefault(); go(-1); };
+      if(nx) nx.onclick = (e) => { e.preventDefault(); go(1); };
+    }
+    el.querySelectorAll('[data-open]').forEach(b => b.onclick = (e) => { e.preventDefault(); const it = imoveis.find(x=>x.id===id); const start = track? Math.round(track.scrollLeft / track.clientWidth) : 0; openViewer(it, b.dataset.open==='0' && b.tagName==='BUTTON'? start : +b.dataset.open); });
+    const srcBtn = $('[data-src]', el), srcs = $('[data-srcs]', el);
+    if(srcBtn && srcs) srcBtn.onclick = () => srcs.classList.toggle('open');
 }
+
+// ---------- visualizador de fotos ----------
+let vState = null;
+function openViewer(it, start){
+  const v = $('#viewer'), tr = $('#vtrack');
+  const fotos = (it.fotos||[]).slice(0,16);
+  tr.innerHTML = fotos.map((u,i)=>`<img src="${u}" alt="Foto ${i+1}" referrerpolicy="no-referrer" loading="${Math.abs(i-start)<=1?'eager':'lazy'}">`).join('');
+  $('#vdesc').innerHTML = `<b>${fmtBRL(it.preco)}</b> por mês<br>${it.bairro}${it.quartos?` · ${it.quartos} quartos`:''}${it.area_m2?` · ${it.area_m2} m²`:''}`;
+  $('#vlink').href = it.url;
+  vState = {n: fotos.length};
+  const upd = () => { const i = Math.round(tr.scrollLeft / tr.clientWidth); $('#vinfo').textContent = `Foto ${i+1} de ${fotos.length}`; };
+  tr.onscroll = upd;
+  v.classList.add('open'); document.body.style.overflow='hidden';
+  requestAnimationFrame(() => { tr.scrollTo({left: start * tr.clientWidth}); upd(); });
+  $('#vprev').onclick = () => tr.scrollBy({left: -tr.clientWidth, behavior:'smooth'});
+  $('#vnext').onclick = () => tr.scrollBy({left: tr.clientWidth, behavior:'smooth'});
+  history.pushState({viewer:1}, '');
+}
+function closeViewer(fromPop){
+  const v = $('#viewer'); if(!v.classList.contains('open')) return;
+  v.classList.remove('open'); document.body.style.overflow=''; $('#vtrack').innerHTML=''; vState = null;
+  if(!fromPop && history.state && history.state.viewer) history.back();
+}
+$('#vclose').onclick = () => closeViewer(false);
+window.addEventListener('popstate', () => closeViewer(true));
+document.addEventListener('keydown', e => {
+  if(!vState) return;
+  if(e.key==='Escape') closeViewer(false);
+  if(e.key==='ArrowLeft') $('#vprev').click();
+  if(e.key==='ArrowRight') $('#vnext').click();
+});
 
 let toastT;
 function toast(msg, undo){
