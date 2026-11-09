@@ -1,11 +1,19 @@
 name: Verificar site
 on:
   workflow_dispatch:
+    inputs:
+      apertar:
+        description: "Simular o botão Atualizar agora (POST)"
+        type: boolean
+        default: false
 jobs:
   verificar:
     runs-on: ubuntu-latest
     steps:
       - name: Botão Atualizar agora ativo?
         run: curl -s https://claudete.vercel.app/api/atualizar; echo
+      - name: Apertar o botão
+        if: ${{ inputs.apertar }}
+        run: curl -s -X POST https://claudete.vercel.app/api/atualizar; echo
       - name: Status dos dados
         run: curl -s https://claudete.vercel.app/data/status.json | head -c 600; echo
