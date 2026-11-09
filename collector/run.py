@@ -78,9 +78,11 @@ def deduplicar(itens: list[dict]) -> list[dict]:
         # Portais diferentes: funde em um só registro
         grupo.sort(key=lambda x: (-completude(x), PRIORIDADE.get(x["portal"], 9)))
         principal = dict(grupo[0])
-        principal["tambem_em"] = [
-            {"portal": o["portal"], "url": o["url"]} for o in grupo[1:] if o["portal"] != principal["portal"]
-        ]
+        tambem: dict[str, str] = {}
+        for o in grupo[1:]:
+            if o["portal"] != principal["portal"]:
+                tambem.setdefault(o["portal"], o["url"])
+        principal["tambem_em"] = [{"portal": p, "url": u} for p, u in tambem.items()]
         # Enriquecimento com campos vazios
         for o in grupo[1:]:
             for k, v in o.items():
