@@ -8,10 +8,11 @@ Uso familiar, sem custo: GitHub Actions coleta os dados e a Vercel publica o sit
 ```
 GitHub Actions (07h e 13h, Brasília)
   └─ collector/run.py
-       ├─ portals/wimoveis.py      (API rplis-api — cobre também o Imovelweb)
-       ├─ portals/dfimoveis.py     (HTML + JSON-LD)
-       ├─ portals/quintoandar.py   (API house-listing-search)
-       └─ portals/chavesnamao.py   (HTML)
+       ├─ portals/vivareal.py      (API glue — direto do Actions)
+       ├─ portals/quintoandar.py   (API house-listing-search — direto do Actions)
+       ├─ portals/chavesnamao.py   (HTML — direto do Actions)
+       └─ data/externos/*.json     (Wimoveis, DF Imóveis, OLX — coleta local diária pelo navegador
+                                    do app do Claude no computador da família; ver collector/local/)
        → deduplica, preserva first_seen_at, grava data/ e public/data/
   └─ commit + push  →  Vercel faz redeploy  →  claudete.vercel.app
 ```
@@ -28,6 +29,12 @@ pip install -r collector/requirements.txt
 python collector/run.py          # gera data/imoveis.json e public/data/
 cd public && python -m http.server 8000
 ```
+
+## Botão "Atualizar agora"
+
+O site chama `/api/atualizar` (função da Vercel), que dispara o workflow "Coletar casas".
+Precisa da variável `GITHUB_TOKEN` na Vercel (token fine-grained só do repo `claudete`, permissão
+Actions: leitura e escrita). Sem ela, o botão avisa que a atualização manual não está configurada.
 
 ## Forçar uma coleta agora
 

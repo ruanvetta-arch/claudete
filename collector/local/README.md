@@ -1,6 +1,6 @@
-# Coleta local (Wimoveis e DF Imóveis)
+# Coleta local (Wimoveis, DF Imóveis e OLX)
 
-Esses dois portais usam Cloudflare e bloqueiam IPs de datacenter (GitHub Actions, Vercel).
+Esses três portais usam Cloudflare/anti-robô e bloqueiam IPs de datacenter (GitHub Actions, Vercel).
 Só respondem a um IP residencial — por isso a coleta roda no navegador do app do Claude,
 no computador da família, por uma tarefa agendada diária.
 
@@ -18,7 +18,10 @@ no computador da família, por uma tarefa agendada diária.
    `collector/local/browser_dfimoveis.js` (demora até ~10 min por causa do limite de requisições
    do site; o resultado fica em `window.__claudete_df`) e traz em pedaços de ~200 itens do
    mesmo jeito (`/tmp/df_N.json`).
-5. Converte: `python3 collector/local/converter.py wimoveis /tmp/wi_*.json` e
+4b. Navega para `https://www.olx.com.br/imoveis/aluguel/casas/estado-df?ros=2&ros=3&ros=4&ros=5&sf=1`,
+   executa `collector/local/browser_olx.js` (resultado em `window.__claudete_olx`; a data `publicado`
+   é o horário exato do anúncio), compacta as fotos e traz em pedaços de ~160 (`/tmp/olx_N.json`).
+5. Converte (também `python3 collector/local/converter.py olx /tmp/olx_*.json`): `python3 collector/local/converter.py wimoveis /tmp/wi_*.json` e
    `python3 collector/local/converter.py dfimoveis /tmp/df_*.json` → grava `data/externos/*.json`.
 6. Commit + push de `data/externos/` e dispara `gh workflow run coletar.yml --ref main`, que
    funde tudo, deduplica e publica (a Vercel faz redeploy sozinha).
