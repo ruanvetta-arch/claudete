@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from common import assinatura  # noqa: E402
-from portals import chavesnamao, dfimoveis, quintoandar, wimoveis  # noqa: E402
+from portals import chavesnamao, dfimoveis, quintoandar, vivareal, wimoveis  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -26,9 +26,14 @@ PUBLIC_DATA = ROOT / "public" / "data"
 BRT = timezone(timedelta(hours=-3))
 DIAS_PARA_INATIVAR = 3
 
-PORTAIS = [dfimoveis, wimoveis, quintoandar, chavesnamao]
+# Portais coletados direto do GitHub Actions (respondem a IP de datacenter).
+PORTAIS = [vivareal, quintoandar, chavesnamao]
+# Wimoveis e DF Imóveis usam Cloudflare e só respondem a IP residencial: entram via
+# data/externos/<portal>.json, gerados por uma coleta rodada no computador da família.
+EXTERNOS_DIR = ROOT / "data" / "externos"
+EXTERNOS_VALIDADE_DIAS = 4
 # Ordem de prioridade para escolher o registro "principal" quando há duplicata
-PRIORIDADE = {"QuintoAndar": 0, "Wimoveis": 1, "DF Imóveis": 2, "Chaves na Mão": 3}
+PRIORIDADE = {"QuintoAndar": 0, "Wimoveis": 1, "DF Imóveis": 2, "VivaReal": 3, "Chaves na Mão": 4}
 
 
 def agora() -> datetime:
@@ -177,6 +182,27 @@ def main() -> int:
             }
             print(f"[erro] {nome}: {e}", flush=True)
 
+    # Fontes externas (coletadas de IP residencial e commitadas em data/externos/)
+    if EXTERNOS_DIR.exists():
+        for f in sorted(EXTERNOS_DIR.glob("*.json")):
+            try:
+                ext = json.loads(f.read_text(encoding="utf-8"))
+                nome = ext.get("portal") or f.stem
+                gerado = datetime.fromisoformat(ext["gerado_em"])
+                idade = (inicio - gerado).days
+                itens = [it for it in ext.get("imoveis", []) if it.get("preco") and (it.get("quartos") or 0) >= 2]
+                if idade > EXTERNOS_VALIDADE_DIAS:
+                    status_portais[nome] = {"ok": False, "total": 0, "ultimo_sucesso": ext["gerado_em"],
+                                            "erro": f"coleta local desatualizada ({idade} dias)"}
+                    print(f"[externo] {nome}: desatualizado ({idade} dias), ignorado", flush=True)
+                    continue
+                coletados.extend(itens)
+                status_portais[nome] = {"ok": True, "total": len(itens), "ultimo_sucesso": ext["gerado_em"], "erro": None,
+                                        "origem": "coleta local"}
+                print(f"[externo] {nome}: {len(itens)} casas (coletado {ext['gerado_em']})", flush=True)
+            except Exception as e:  # noqa: BLE001
+                print(f"[externo] {f.name}: {e}", flush=True)
+
     portais_ok = {n for n, s in status_portais.items() if s["ok"]}
 
     # Enriquecimento de fotos: portais cuja listagem traz só 1 foto.
@@ -216,8 +242,13 @@ def main() -> int:
         if it["id"] in vistos:
             continue
         if it.get("portal") not in portais_ok:
-            # portal falhou hoje: preserva o registro como estava
-            finais.append(it)
+            # portal falhou hoje: preserva o registro como estava, por até 14 dias
+            try:
+                last = datetime.fromisoformat(it.get("last_seen_at") or it["first_seen_at"])
+            except Exception:  # noqa: BLE001
+                last = hoje
+            if last >= hoje - timedelta(days=14):
+                finais.append(it)
             continue
         try:
             last = datetime.fromisoformat(it.get("last_seen_at") or it["first_seen_at"])
