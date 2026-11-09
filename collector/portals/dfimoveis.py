@@ -119,6 +119,31 @@ def _parse_pagina(html: str) -> list[dict]:
     return itens
 
 
+FOTO_RE = re.compile(r"https://img\.dfimoveis\.com\.br/fotos/(\d+)/[a-f0-9]+\.(?:webp|jpg)")
+
+
+def fotos_detalhe(s, it: dict, max_fotos: int = 12) -> list[str]:
+    """Abre a página do anúncio e devolve todas as fotos (a listagem traz só 1)."""
+    r = get(s, it["url"])
+    if r.status_code != 200:
+        return it.get("fotos") or []
+    vistos: list[str] = []
+    for m in FOTO_RE.finditer(r.text):
+        if m.group(1) != it["id_portal"]:
+            continue
+        u = m.group(0)
+        if u not in vistos:
+            vistos.append(u)
+        if len(vistos) >= max_fotos:
+            break
+    # Complementa flags com o texto completo do anúncio
+    flags = flags_from_text(re.sub(r"<[^>]+>", " ", r.text[:200000]))
+    for k, v in flags.items():
+        if v:
+            it[k] = True
+    return vistos or (it.get("fotos") or [])
+
+
 def coletar() -> list[dict]:
     s = session()
     todos: dict[str, dict] = {}

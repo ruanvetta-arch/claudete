@@ -100,6 +100,39 @@ def deduplicar(itens: list[dict]) -> list[dict]:
     return resultado
 
 
+ENRIQUECEDORES = {dfimoveis.NOME: dfimoveis, chavesnamao.NOME: chavesnamao}
+TETO_ENRIQUECIMENTO_S = 8 * 60
+
+
+def enriquecer_fotos(coletados: list[dict], antigos: dict[str, dict]) -> None:
+    import time
+    from common import session as _session
+
+    t0 = time.time()
+    sess = _session()
+    feitos = 0
+    for it in coletados:
+        mod = ENRIQUECEDORES.get(it["portal"])
+        if not mod:
+            continue
+        velho = antigos.get(it["id"])
+        if velho and len(velho.get("fotos") or []) > 1:
+            # Já temos as fotos completas de uma rodada anterior
+            it["fotos"] = velho["fotos"]
+            for k in ("piscina", "aceita_pet", "mobiliada", "churrasqueira"):
+                it[k] = it.get(k) or velho.get(k, False)
+            continue
+        if time.time() - t0 > TETO_ENRIQUECIMENTO_S:
+            continue
+        try:
+            it["fotos"] = mod.fotos_detalhe(sess, it)
+            feitos += 1
+            time.sleep(0.4)
+        except Exception as e:  # noqa: BLE001
+            print(f"[fotos] {it['portal']} {it['id_portal']}: {e}", flush=True)
+    print(f"[fotos] páginas de detalhe visitadas: {feitos} em {int(time.time()-t0)}s", flush=True)
+
+
 def main() -> int:
     inicio = agora()
     anterior = carregar_anterior()
@@ -143,6 +176,11 @@ def main() -> int:
             print(f"[erro] {nome}: {e}", flush=True)
 
     portais_ok = {n for n, s in status_portais.items() if s["ok"]}
+
+    # Enriquecimento de fotos: portais cuja listagem traz só 1 foto.
+    # Só para anúncios que ainda não conhecemos (ou que têm <= 1 foto), com teto de tempo.
+    enriquecer_fotos(coletados, antigos)
+
     novos = deduplicar(coletados)
 
     hoje = inicio

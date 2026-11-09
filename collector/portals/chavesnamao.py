@@ -83,6 +83,42 @@ def _parse_pagina(html: str) -> list[dict]:
     return itens
 
 
+def fotos_detalhe(s, it: dict, max_fotos: int = 12) -> list[str]:
+    """Página do anúncio: JSON-LD traz todas as fotos em 1200x800."""
+    import json as _json
+
+    r = get(s, it["url"])
+    if r.status_code != 200:
+        return it.get("fotos") or []
+    soup = BeautifulSoup(r.text, "html.parser")
+    fotos: list[str] = []
+    for sc in soup.select('script[type="application/ld+json"]'):
+        txt = sc.string or ""
+        if '"image"' not in txt:
+            continue
+        try:
+            data = _json.loads(txt)
+        except Exception:  # noqa: BLE001
+            continue
+        nodes = data.get("@graph", [data]) if isinstance(data, dict) else data
+        for node in nodes if isinstance(nodes, list) else []:
+            img = node.get("image") if isinstance(node, dict) else None
+            if isinstance(img, str):
+                img = [img]
+            for u in img or []:
+                if isinstance(u, str) and f"/{it['id_portal']}/" in u and u not in fotos:
+                    fotos.append(u)
+    if not fotos:
+        for m in re.finditer(r"https://www\.chavesnamao\.com\.br/imn/1200x0800/[^\"'\s\\]+?\.jpg", r.text):
+            if f"/{it['id_portal']}/" in m.group(0) and m.group(0) not in fotos:
+                fotos.append(m.group(0))
+    flags = flags_from_text(soup.get_text(" ", strip=True)[:50000])
+    for k, v in flags.items():
+        if v:
+            it[k] = True
+    return fotos[:max_fotos] or (it.get("fotos") or [])
+
+
 def coletar() -> list[dict]:
     s = session()
     todos: dict[str, dict] = {}
