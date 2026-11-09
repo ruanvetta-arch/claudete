@@ -1,31 +1,25 @@
 {
-  "gerado_em": "2026-11-08T22:10:40-03:00",
-  "duracao_s": 20,
-  "total_ativos": 140,
-  "novos_hoje": 140,
+  "gerado_em": "2026-11-08T22:28:35-03:00",
+  "duracao_s": 6,
+  "total_ativos": 184,
+  "novos_hoje": 46,
   "portais": {
-    "DF Imóveis": {
+    "VivaReal": {
       "ok": true,
-      "total": 0,
-      "ultimo_sucesso": "2026-11-08T22:10:19-03:00",
+      "total": 48,
+      "ultimo_sucesso": "2026-11-08T22:28:28-03:00",
       "erro": null
-    },
-    "Wimoveis": {
-      "ok": false,
-      "total": 0,
-      "ultimo_sucesso": null,
-      "erro": "RuntimeError: Wimoveis HTTP 403: <!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><meta http-equiv=\"X-UA-Compatible\" content="
     },
     "QuintoAndar": {
       "ok": true,
       "total": 126,
-      "ultimo_sucesso": "2026-11-08T22:10:20-03:00",
+      "ultimo_sucesso": "2026-11-08T22:28:33-03:00",
       "erro": null
     },
     "Chaves na Mão": {
       "ok": true,
       "total": 21,
-      "ultimo_sucesso": "2026-11-08T22:10:21-03:00",
+      "ultimo_sucesso": "2026-11-08T22:28:34-03:00",
       "erro": null
     }
   }
