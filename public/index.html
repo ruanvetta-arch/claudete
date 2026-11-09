@@ -373,30 +373,52 @@ function render(){
     const b=$('#limparTudo'); if(b) b.onclick = limparTudo;
     return;
   }
-  let html = '';
+  // Renderização progressiva: lotes de 24 cards, carregando ao rolar
+  const LOTE = 24;
+  const grupos = [];
   if(f.ordem==='recentes' && view==='recentes'){
-    const grupos = new Map();
-    for(const it of lista){ const d = dataLocal(it.first_seen_at); const k = chaveDia(d); if(!grupos.has(k)) grupos.set(k,{d,itens:[]}); grupos.get(k).itens.push(it); }
-    for(const [k,g] of grupos){
-      const rot = rotuloDia(g.d);
-      const sub = rot==='Hoje'||rot==='Ontem' ? '' : '';
-      html += `<section class="day"><h2>${rot}<span>${g.itens.length} ${g.itens.length===1?'casa':'casas'}</span></h2><div class="grid">${g.itens.map(card).join('')}</div></section>`;
-    }
+    const m = new Map();
+    for(const it of lista){ const d = dataLocal(it.first_seen_at); const k = chaveDia(d); if(!m.has(k)) m.set(k,{d,itens:[]}); m.get(k).itens.push(it); }
+    for(const g of m.values()) grupos.push({titulo: rotuloDia(g.d), sub: `${g.itens.length} ${g.itens.length===1?'casa':'casas'}`, itens: g.itens});
   } else {
-    html += `<section class="day"><h2>${view==='favoritos'?'Favoritas':view==='ocultas'?'Já vi':'Casas'}<span>${lista.length}</span></h2><div class="grid">${lista.map(card).join('')}</div></section>`;
+    grupos.push({titulo: view==='favoritos'?'Favoritas':view==='ocultas'?'Já vi':'Casas', sub: String(lista.length), itens: lista});
   }
-  root.innerHTML = html;
-  bindCards();
+  root.innerHTML = '';
+  let gi = 0, ii = 0, grid = null;
+  const sentinel = document.createElement('div'); sentinel.style.height = '1px';
+  function proximoLote(){
+    let n = 0;
+    while(n < LOTE && gi < grupos.length){
+      const g = grupos[gi];
+      if(ii === 0){
+        const sec = document.createElement('section'); sec.className = 'day';
+        sec.innerHTML = `<h2>${g.titulo}<span>${g.sub}</span></h2><div class="grid"></div>`;
+        root.insertBefore(sec, sentinel.parentNode === root ? sentinel : null);
+        grid = sec.querySelector('.grid');
+      }
+      const fim = Math.min(g.itens.length, ii + (LOTE - n));
+      const frag = document.createElement('template');
+      frag.innerHTML = g.itens.slice(ii, fim).map(card).join('');
+      const novos = [...frag.content.children];
+      grid.append(...novos);
+      novos.forEach(bindCard);
+      n += fim - ii; ii = fim;
+      if(ii >= g.itens.length){ gi++; ii = 0; }
+    }
+    if(gi >= grupos.length){ obs.disconnect(); sentinel.remove(); }
+  }
+  const obs = new IntersectionObserver(es => { if(es.some(e=>e.isIntersecting)) proximoLote(); }, {rootMargin: '900px'});
+  root.appendChild(sentinel);
+  proximoLote();
+  obs.observe(sentinel);
 }
 
-function bindCards(){
-  document.querySelectorAll('.card').forEach(el => {
+function bindCard(el){
     const id = el.dataset.id;
     $('[data-fav]', el).onclick = (e) => { e.preventDefault(); favs.has(id)? favs.delete(id): favs.add(id); store.set('favs',[...favs]); const b=e.currentTarget; b.setAttribute('aria-pressed', favs.has(id)); b.innerHTML = favs.has(id)?ICON.heart:ICON.heartO; renderTabs(); if(view==='favoritos') render(); toast(favs.has(id)?'Guardada nas favoritas':'Removida das favoritas'); };
     $('[data-hide]', el).onclick = () => { const was = hidden.has(id); was? hidden.delete(id): hidden.add(id); store.set('hidden',[...hidden]); render(); renderChips(); toast(was?'Casa de volta na lista':'Escondida. Veja em "Já vi".', was?null:()=>{ hidden.delete(id); store.set('hidden',[...hidden]); render(); renderChips(); }); };
     const track = $('[data-track]', el);
     if(track){ const dots = el.querySelectorAll('.dots i'); track.addEventListener('scroll', () => { const i = Math.round(track.scrollLeft / track.clientWidth); dots.forEach((d,j)=>d.classList.toggle('on', j===i)); }, {passive:true}); }
-  });
 }
 
 let toastT;

@@ -107,7 +107,8 @@ def deduplicar(itens: list[dict]) -> list[dict]:
     return resultado
 
 
-ENRIQUECEDORES = {dfimoveis.NOME: dfimoveis, chavesnamao.NOME: chavesnamao}
+# DF Imóveis chega via coleta local já com fotos; só o Chaves na Mão precisa de detalhe aqui.
+ENRIQUECEDORES = {chavesnamao.NOME: chavesnamao}
 TETO_ENRIQUECIMENTO_S = 8 * 60
 
 
