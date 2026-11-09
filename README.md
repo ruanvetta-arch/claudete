@@ -30,11 +30,16 @@ python collector/run.py          # gera data/imoveis.json e public/data/
 cd public && python -m http.server 8000
 ```
 
-## Botão "Atualizar agora"
+## Atualização automática ao abrir o site
 
-O site chama `/api/atualizar` (função da Vercel), que dispara o workflow "Coletar casas".
-Precisa da variável `GITHUB_TOKEN` na Vercel (token fine-grained só do repo `claudete`, permissão
-Actions: leitura e escrita). Sem ela, o botão avisa que a atualização manual não está configurada.
+- **Qualquer aparelho**: se os dados têm mais de 20 minutos, a página chama `/api/atualizar`, que dispara o
+  workflow "Coletar casas" (VivaReal, QuintoAndar, Chaves na Mão). A faixa "Procurando casas novas…" aparece
+  e a lista se atualiza sozinha quando termina.
+- **Computador da família** (com a extensão `extensao/` instalada — página `/instalar`): ao abrir o site, a
+  extensão abre Wimoveis, OLX e DF Imóveis em abas de fundo, coleta pela conexão de casa, envia para
+  `/api/receber` (que grava `data/bruto/<portal>.json` no GitHub) e dispara o workflow. Repete no máximo a cada 30 min.
+- `GITHUB_TOKEN` na Vercel: token fine-grained só do repo `claudete` com **Actions** e **Contents** em leitura e escrita.
+- Os horários 07h e 13h continuam como reserva.
 
 ## Forçar uma coleta agora
 

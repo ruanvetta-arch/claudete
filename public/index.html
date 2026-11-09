@@ -63,6 +63,14 @@ header{position:sticky;top:0;z-index:20;background:rgba(246,247,244,.92);backdro
 .seg button[aria-selected=true] .n{background:var(--green);color:#fff}
 .meta .when{text-align:right}
 .meta .when.found{color:var(--ink-3)}
+/* Faixa de atualização automática */
+.sync{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px 14px;border-radius:14px;background:var(--green-soft);color:var(--green-dark);font-weight:800;font-size:15px}
+.sync[hidden]{display:none}
+.sync.ok{background:#E8F5EC}
+.sync.erro{background:var(--ipe-soft);color:#6B5000}
+.sync .spinner{width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(31,111,74,.25);border-top-color:var(--green);animation:rot 0.9s linear infinite;flex:none}
+.sync.ok .spinner,.sync.erro .spinner{display:none}
+.status .again{margin-left:6px;color:var(--green-dark);font-weight:800;text-decoration:underline;text-underline-offset:3px;background:none;border:0;padding:0;font-size:inherit;cursor:pointer}
 /* Status line */
 .status{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--ink-3);padding:14px 0 2px}
 .status .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
@@ -215,7 +223,7 @@ nav.bottom .cnt{position:absolute;margin-left:28px;margin-top:-4px;background:va
 
 <main class="wrap" id="main">
   <div class="status" id="status"><span class="dot"></span><span>Carregando as casas…</span></div>
-  <div style="display:flex;align-items:center;margin-top:8px"><button class="refresh" id="refresh" title="Buscar casas novas nos sites agora"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>Atualizar agora</button></div>
+  <div class="sync" id="sync" hidden><span class="spinner" aria-hidden="true"></span><span id="syncTxt">Procurando casas novas…</span></div>
   <div id="list"><div class="grid" style="margin-top:22px"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></div>
 </main>
 
@@ -422,7 +430,8 @@ function renderStatus(){
   const dt = status.gerado_em? new Date(status.gerado_em): null;
   const quando = dt? (chaveDia(dt)===chaveDia(new Date())? 'hoje às '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : dt.toLocaleDateString('pt-BR',{day:'numeric',month:'short'})+' às '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})) : '—';
   el.className = 'status'+(falhas.length?' warn':'');
-  el.innerHTML = `<span class="dot"></span><span>Atualizado ${quando} · <b>${status.total_ativos||0} casas</b> de ${Object.keys(p).length} sites${status.novos_hoje?` · <b>${status.novos_hoje} novas</b>`:''}${falhas.length?` · ${falhas.join(', ')} não respondeu hoje`:''}</span>`;
+  el.innerHTML = `<span class="dot"></span><span>Atualizado ${quando} · <b>${status.total_ativos||0} casas</b> de ${Object.keys(p).length} sites${status.novos_hoje?` · <b>${status.novos_hoje} novas</b>`:''}${falhas.length?` · ${falhas.join(', ')} não respondeu hoje`:''} · <button class="again" id="again">atualizar</button></span>`;
+  const ag = $('#again'); if(ag) ag.onclick = () => iniciarAtualizacao(true);
 }
 
 function card(it){
@@ -630,43 +639,104 @@ let qT;
 $('#q').addEventListener('input', e => { f.q = e.target.value; $('#searchBox').classList.toggle('has', !!f.q); clearTimeout(qT); qT=setTimeout(render, 120); });
 $('#clearQ').onclick = () => { $('#q').value=''; f.q=''; $('#searchBox').classList.remove('has'); render(); $('#q').focus(); };
 
-// ---------- atualizar agora ----------
-(() => {
-  const btn = $('#refresh');
-  let poll = null;
-  btn.onclick = async () => {
-    btn.disabled = true; btn.classList.add('spin'); btn.lastChild.textContent = 'Buscando nos sites…';
-    const antes = status && status.gerado_em;
-    let ok = false, msg = '';
+// ---------- atualização automática ao abrir ----------
+// Em qualquer aparelho: se os dados têm mais de 20 min, pede uma coleta (VivaReal, QuintoAndar, Chaves na Mão).
+// No computador da família, a extensão "claudete — coletor" também busca Wimoveis, DF Imóveis e OLX
+// pela conexão de casa e avisa o andamento por window.postMessage({claudeteColetor: ...}).
+const IDADE_MAX_MIN = 20;
+let sync = { rodando:false, poll:null, antes:null, extensao:false };
+function faixa(txt, tipo){
+  const el = $('#sync');
+  if(!txt){ el.hidden = true; return; }
+  el.hidden = false; el.className = 'sync' + (tipo? ' '+tipo : ''); $('#syncTxt').textContent = txt;
+}
+function dadosVelhos(){
+  if(!status || !status.gerado_em) return true;
+  return (Date.now() - new Date(status.gerado_em)) > IDADE_MAX_MIN*60*1000;
+}
+async function pedirColetaServidor(){
+  try {
+    const r = await fetch('/api/atualizar', {method:'POST'});
+    const j = await r.json().catch(()=>({}));
+    return r.ok && j.ok;
+  } catch(e){ return false; }
+}
+function aguardarNovosDados(){
+  if(sync.poll) return;
+  sync.antes = status && status.gerado_em;
+  const t0 = Date.now();
+  sync.poll = setInterval(async () => {
     try {
-      const r = await fetch('/api/atualizar', {method:'POST'});
-      const j = await r.json().catch(()=>({}));
-      ok = r.ok && j.ok; msg = j.mensagem || '';
-    } catch(e){ ok = false; }
-    if(!ok){ btn.disabled=false; btn.classList.remove('spin'); btn.lastChild.textContent='Atualizar agora'; toast(msg || 'Não consegui iniciar a atualização agora. Tente de novo em instantes.'); return; }
-    toast('Atualização iniciada. Leva uns 3 minutos; a lista recarrega sozinha.');
-    const t0 = Date.now();
-    poll = setInterval(async () => {
-      try {
-        const s = await fetch('/data/status.json?v='+Date.now(), {cache:'no-store'}).then(r=>r.json());
-        if(s && s.gerado_em && s.gerado_em !== antes){ clearInterval(poll); toast('Casas atualizadas!'); setTimeout(()=>location.reload(), 900); }
-      } catch(e){}
-      if(Date.now()-t0 > 8*60*1000){ clearInterval(poll); btn.disabled=false; btn.classList.remove('spin'); btn.lastChild.textContent='Atualizar agora'; toast('A atualização está demorando; recarregue a página daqui a pouco.'); }
-    }, 15000);
-  };
-})();
+      const s2 = await fetch('/data/status.json?v='+Date.now(), {cache:'no-store'}).then(r=>r.json());
+      if(s2 && s2.gerado_em && s2.gerado_em !== sync.antes){
+        clearInterval(sync.poll); sync.poll = null;
+        const antesIds = new Set(imoveis.map(i=>i.id));
+        await recarregarDados();
+        const novas = imoveis.filter(i=>!i.inativo && !antesIds.has(i.id)).length;
+        sync.rodando = false;
+        faixa(novas? `${novas} ${novas===1?'casa nova encontrada':'casas novas encontradas'}` : 'Tudo atualizado', 'ok');
+        setTimeout(()=>faixa(null), 5000);
+      }
+    } catch(e){}
+    if(Date.now()-t0 > 12*60*1000){ clearInterval(sync.poll); sync.poll=null; sync.rodando=false; faixa(null); }
+  }, 15000);
+}
+async function iniciarAtualizacao(forcar){
+  if(sync.rodando && !forcar) return;
+  sync.rodando = true;
+  if(sync.extensao){
+    // A extensão coleta os 3 sites de casa e, no fim, dispara a coleta do servidor
+    window.postMessage({claudete:'coletar', forcar: !!forcar}, location.origin);
+    faixa('Procurando casas novas…');
+    return;
+  }
+  faixa('Procurando casas novas…');
+  const ok = await pedirColetaServidor();
+  if(!ok){ sync.rodando=false; faixa(null); return; }
+  aguardarNovosDados();
+}
+window.addEventListener('message', (e) => {
+  if(e.source !== window || !e.data || !e.data.claudeteColetor) return;
+  const m = e.data.claudeteColetor;
+  sync.extensao = true;
+  if(m.fase === 'presente') return;
+  if(m.fase === 'recente'){ if(!sync.poll){ sync.rodando=false; faixa(null); } return; }
+  if(m.fase === 'erro'){ faixa(m.msg || 'Não consegui buscar em um dos sites; tento de novo na próxima vez.', 'erro'); setTimeout(()=>faixa(null), 6000); }
+  else if(m.msg) faixa(m.msg);
+  if(m.fase === 'enviado' || m.fase === 'fim') aguardarNovosDados();
+});
+async function recarregarDados(){
+  const y = window.scrollY;
+  await buscarDados();
+  renderStatus(); renderTabs(); renderSeg(); renderChips(); render();
+  window.scrollTo({top:y});
+}
 
 // ---------- carga ----------
-async function carregar(){
+// Escapa texto vindo dos portais antes de ir para o HTML
+const ESC = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+const esc = v => typeof v === 'string' ? v.replace(/[&<>"']/g, c => ESC[c]) : v;
+const urlOk = u => (typeof u === 'string' && /^https:\/\//.test(u)) ? esc(u) : '#';
+function limpar(it){
+  for(const k of ['bairro','regiao','titulo','anunciante','portal','publicado_txt']) it[k] = esc(it[k]);
+  it.url = urlOk(it.url);
+  it.fotos = (it.fotos||[]).filter(u => typeof u==='string' && /^https:\/\//.test(u)).map(esc);
+  it.tambem_em = (it.tambem_em||[]).map(o => ({portal: esc(o.portal), anunciante: esc(o.anunciante), url: urlOk(o.url)}));
+  return it;
+}
+async function buscarDados(){
   try{
     const v = Date.now();
     const [a,b] = await Promise.all([
-      fetch('/data/imoveis.json?v='+v).then(r=>r.ok?r.json():{imoveis:[]}),
-      fetch('/data/status.json?v='+v).then(r=>r.ok?r.json():null).catch(()=>null),
+      fetch('/data/imoveis.json?v='+v, {cache:'no-store'}).then(r=>r.ok?r.json():{imoveis:[]}),
+      fetch('/data/status.json?v='+v, {cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null),
     ]);
-    imoveis = (a.imoveis||[]).filter(i=>i && i.preco && i.first_seen_at);
+    imoveis = (a.imoveis||[]).filter(i=>i && i.preco && i.first_seen_at).map(limpar);
     status = b;
-  }catch(e){ imoveis=[]; status=null; }
+  }catch(e){ if(!imoveis.length){ imoveis=[]; status=null; } }
+}
+async function carregar(){
+  await buscarDados();
   periodo = store.get('periodo', 'hoje');
   // Se não há nada hoje, abre em "Tudo" para a tela nunca vir vazia na primeira visita
   if(periodo==='hoje' && !store.get('periodoEscolhido', false) && contaPeriodo().h===0) periodo = 'tudo';
@@ -674,6 +744,13 @@ async function carregar(){
   if(!imoveis.length){
     $('#list').innerHTML = `<div class="empty-state"><h3>Ainda não há casas aqui</h3><p>A primeira coleta acontece em instantes. Volte daqui a pouco.</p></div>`;
   }
+  // Dá um instante para a extensão (se instalada) se apresentar; depois decide quem atualiza
+  sync.extensao = sync.extensao || document.documentElement.dataset.claudeteColetor === '1';
+  setTimeout(() => {
+    sync.extensao = sync.extensao || document.documentElement.dataset.claudeteColetor === '1';
+    if(sync.extensao){ iniciarAtualizacao(false); }
+    else if(dadosVelhos()){ iniciarAtualizacao(false); }
+  }, 1200);
 }
 carregar();
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(()=>{}); }

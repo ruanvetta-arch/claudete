@@ -26,6 +26,11 @@ jobs:
           cache: pip
           cache-dependency-path: collector/requirements.txt
       - run: pip install -r collector/requirements.txt
+      - name: Converter dados enviados pela extensão (Wimoveis, DF Imóveis, OLX)
+        run: |
+          for p in wimoveis dfimoveis olx; do
+            if [ -f data/bruto/$p.json ]; then python collector/local/converter.py $p data/bruto/$p.json --se-mais-novo; fi
+          done
       - name: Rodar coletor
         run: python collector/run.py
       - name: Publicar dados

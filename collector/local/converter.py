@@ -193,11 +193,27 @@ def main() -> int:
     nome, fn = CONV[portal]
     itens: dict[str, dict] = {}
     brutos: list[dict] = []
-    for arq in sys.argv[2:]:
+    coletado_em: datetime | None = None
+    for arq in [a for a in sys.argv[2:] if not a.startswith("--")]:
         data = json.loads(Path(arq).read_text(encoding="utf-8"))
         if isinstance(data, dict):
+            if data.get("coletado_em"):
+                try:
+                    c = datetime.fromisoformat(str(data["coletado_em"]).replace("Z", "+00:00")).astimezone(BRT)
+                    coletado_em = c if coletado_em is None else max(coletado_em, c)
+                except Exception:  # noqa: BLE001
+                    pass
             data = data.get("itens") or data.get("imoveis") or []
         brutos.extend(data)
+    destino = EXTERNOS / f"{portal}.json"
+    if "--se-mais-novo" in sys.argv and coletado_em and destino.exists():
+        try:
+            atual = datetime.fromisoformat(json.loads(destino.read_text(encoding="utf-8"))["gerado_em"])
+            if atual >= coletado_em:
+                print(f"{nome}: dados de data/externos já são mais novos ({atual}); nada a fazer")
+                return 0
+        except Exception:  # noqa: BLE001
+            pass
     if portal == "wimoveis":
         # Define o "hoje" do relógio do portal antes de converter
         for raw in brutos:
@@ -209,9 +225,9 @@ def main() -> int:
             if it:
                 itens.setdefault(it["id"], it)
     EXTERNOS.mkdir(parents=True, exist_ok=True)
-    saida = {"portal": nome, "gerado_em": datetime.now(BRT).isoformat(timespec="seconds"), "total": len(itens),
+    saida = {"portal": nome, "gerado_em": (coletado_em or datetime.now(BRT)).isoformat(timespec="seconds"), "total": len(itens),
              "imoveis": list(itens.values())}
-    (EXTERNOS / f"{portal}.json").write_text(json.dumps(saida, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    destino.write_text(json.dumps(saida, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"{nome}: {len(itens)} casas -> data/externos/{portal}.json")
     return 0
 

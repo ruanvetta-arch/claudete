@@ -309,6 +309,8 @@ def main() -> int:
         velho = min(velhos, key=lambda v: v.get("first_seen_at") or "9") if velhos else None
         if velho:
             it["first_seen_at"] = velho.get("first_seen_at") or iso(hoje)
+            if len(it.get("fotos") or []) <= 1 and len(velho.get("fotos") or []) > 1:
+                it["fotos"] = velho["fotos"]
             if velho.get("preco") and velho["preco"] != it["preco"]:
                 it["preco_anterior"] = velho["preco"]
             elif velho.get("preco_anterior"):

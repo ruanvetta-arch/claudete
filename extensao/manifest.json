@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "claudete — coletor de casas",
+  "version": "1.0.0",
+  "description": "Quando o site claudete é aberto neste computador, busca as casas novas no Wimoveis, DF Imóveis e OLX e envia para o site.",
+  "icons": { "16": "icon-16.png", "48": "icon-48.png", "128": "icon-128.png" },
+  "permissions": ["storage", "scripting", "tabs"],
+  "host_permissions": [
+    "https://claudete.vercel.app/*",
+    "https://www.wimoveis.com.br/*",
+    "https://www.dfimoveis.com.br/*",
+    "https://www.olx.com.br/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://claudete.vercel.app/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

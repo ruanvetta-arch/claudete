@@ -4,7 +4,24 @@
   "outputDirectory": "public",
   "cleanUrls": true,
   "headers": [
-    { "source": "/data/(.*)", "headers": [ { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" } ] },
-    { "source": "/sw.js", "headers": [ { "key": "Cache-Control", "value": "no-cache" } ] }
-  ]
+    {
+      "source": "/data/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    }
+  ],
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- public api vercel.json package.json"
 }
