@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: URL para testar
+        description: URL para testar (ou "fontes" para testar várias)
         required: true
 jobs:
   fetch:
@@ -12,43 +12,43 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install -r collector/requirements.txt curl_cffi playwright && python -m playwright install --with-deps chromium
+      - run: pip install -r collector/requirements.txt curl_cffi
       - name: Testes de acesso
         env:
           URL: ${{ inputs.url }}
         run: |
           python - <<'PY'
-          import os, re, sys
-          sys.path.insert(0,'collector')
+          import os, re, sys, json
+          from curl_cffi import requests as cr
           url=os.environ['URL']
-          def resumo(tag, status, text):
-              t=text or ''
-              print(f"== {tag}: status={status} len={len(t)} cards_df={t.count('RealEstateListing')} cards_wi={t.count('posting PROPERTY')} cf={'Just a moment' in t} title={re.search(r'<title>([^<]*)',t).group(1)[:80] if re.search(r'<title>([^<]*)',t) else None}")
-          # 1) requests
-          try:
-              from common import session, get
-              r=get(session(), url); resumo('requests', r.status_code, r.text)
-          except Exception as e: print('requests ERR', e)
-          # 2) curl_cffi
-          try:
-              from curl_cffi import requests as cr
-              for imp in ('chrome', 'chrome124', 'safari17_0', 'firefox'):
-                  try:
-                      r=cr.get(url, impersonate=imp, timeout=40, headers={'Accept-Language':'pt-BR,pt;q=0.9'})
-                      resumo('curl_cffi/'+imp, r.status_code, r.text)
-                  except Exception as e: print('curl_cffi', imp, 'ERR', e)
-          except Exception as e: print('curl_cffi import ERR', e)
-          # 3) playwright
-          try:
-              from playwright.sync_api import sync_playwright
-              with sync_playwright() as p:
-                  b=p.chromium.launch(args=['--disable-blink-features=AutomationControlled'])
-                  ctx=b.new_context(locale='pt-BR', user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', viewport={'width':1366,'height':768})
-                  pg=ctx.new_page(); resp=pg.goto(url, wait_until='domcontentloaded', timeout=60000)
-                  pg.wait_for_timeout(8000)
-                  html=pg.content(); resumo('playwright', resp.status if resp else None, html)
-                  if 'Just a moment' in html:
-                      pg.wait_for_timeout(12000); html=pg.content(); resumo('playwright+20s', None, html)
-                  b.close()
-          except Exception as e: print('playwright ERR', e)
+          def resumo(tag, r):
+              t=r.text or ''
+              title=re.search(r'<title>([^<]*)',t)
+              print(f"== {tag}: status={r.status_code} len={len(t)} cf={'Just a moment' in t} title={title.group(1)[:70] if title else None} head={t[:160]!r}")
+          tests = []
+          if url == 'fontes':
+              tests = [
+                ('vivareal-glue', 'https://glue-api.vivareal.com/v2/listings?addressCity=Bras%C3%ADlia&addressState=Distrito%20Federal&addressLocationId=BR%3EDistrito%20Federal%3ENULL%3EBrasilia&business=RENTAL&categoryPage=RESULT&listingType=USED&unitTypes=HOME&unitTypesV3=HOME&usageTypes=RESIDENTIAL&bedrooms=2&size=36&from=0&includeFields=search(result(listings(listing(id,title,address,bedrooms,bathrooms,parkingSpaces,usableAreas,totalAreas,pricingInfos,amenities,images,updatedAt,createdAt),link(href)),totalCount))', {'x-domain':'www.vivareal.com.br','referer':'https://www.vivareal.com.br/','origin':'https://www.vivareal.com.br'}),
+                ('zap-glue', 'https://glue-api.zapimoveis.com.br/v2/listings?addressCity=Bras%C3%ADlia&addressState=Distrito%20Federal&addressLocationId=BR%3EDistrito%20Federal%3ENULL%3EBrasilia&business=RENTAL&categoryPage=RESULT&listingType=USED&unitTypes=HOME&usageTypes=RESIDENTIAL&bedrooms=2&size=36&from=0&includeFields=search(result(listings(listing(id,title,address,bedrooms,pricingInfos,images),link(href)),totalCount))', {'x-domain':'www.zapimoveis.com.br','referer':'https://www.zapimoveis.com.br/','origin':'https://www.zapimoveis.com.br'}),
+                ('nestoria-api', 'https://api.nestoria.com.br/api?encoding=json&pretty=0&action=search_listings&country=br&listing_type=rent&property_type=house&bedroom_min=2&place_name=Distrito%20Federal&number_of_results=50&page=1&sort=newest', {}),
+                ('nestoria-html', 'https://www.nestoria.com.br/distrito-federal/casas/aluguel?bedrooms=2', {}),
+                ('olx', 'https://www.olx.com.br/imoveis/aluguel/casas/estado-df?ros=2', {}),
+                ('imovelweb', 'https://www.imovelweb.com.br/casas-aluguel-distrito-federal-mais-de-2-quartos.html', {}),
+                ('trovit', 'https://imoveis.trovit.com.br/aluguel-casa-distrito-federal', {}),
+                ('mitula', 'https://imoveis.mitula.com.br/imoveis/aluguel-casas-2-quartos-brasilia', {}),
+                ('loft', 'https://loft.com.br/alugar/casas/df/brasilia', {}),
+                ('chavesnamao', 'https://www.chavesnamao.com.br/casas-para-alugar/df/', {}),
+              ]
+          else:
+              tests=[('url', url, {})]
+          for tag,u,h in tests:
+              try:
+                  r=cr.get(u, impersonate='chrome', timeout=40, headers={'Accept-Language':'pt-BR,pt;q=0.9', **h})
+                  resumo(tag, r)
+                  if 'glue' in tag and r.status_code==200:
+                      j=r.json(); res=j.get('search',{}).get('result',{}); print('   total', res.get('totalCount'), 'n', len(res.get('listings',[])))
+                      if res.get('listings'): print('   sample', json.dumps(res['listings'][0])[:800])
+                  if 'nestoria-api' in tag and r.status_code==200:
+                      j=r.json(); print('   nestoria', json.dumps(j)[:600])
+              except Exception as e: print(tag,'ERR',e)
           PY
