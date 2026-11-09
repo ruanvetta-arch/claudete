@@ -118,6 +118,11 @@ def deduplicar(itens: list[dict]) -> list[dict]:
                 {"portal": o["portal"], "anunciante": o.get("anunciante"), "url": o["url"]} for o in grupo[1:]
             ]
             principal["anuncios"] = len(grupo)
+            # Publicação: a mais antiga entre os anúncios (preferindo quem tem hora quando a data empata)
+            pubs = [o.get("publicado_em") for o in grupo if o.get("publicado_em")]
+            if pubs:
+                principal["publicado_em"] = min(pubs, key=lambda p: (p[:10], 0 if len(p) > 10 else 1))
+                principal["publicado_txt"] = None
             # Enriquecimento com campos vazios
             for o in grupo[1:]:
                 for k, v in o.items():
@@ -169,6 +174,37 @@ def enriquecer_fotos(coletados: list[dict], antigos: dict[str, dict]) -> None:
         except Exception as e:  # noqa: BLE001
             print(f"[fotos] {it['portal']} {it['id_portal']}: {e}", flush=True)
     print(f"[fotos] páginas de detalhe visitadas: {feitos} em {int(time.time()-t0)}s", flush=True)
+
+
+def definir_adicionado(it: dict, hoje: datetime) -> None:
+    """adicionado_em = data de publicação informada pelo portal; senão, quando a plataforma encontrou.
+
+    `adicionado_fonte`: "portal" (data vem do anúncio) ou "coleta" (primeira vez que vimos).
+    `adicionado_hora`: True quando a hora é conhecida (não só a data).
+    """
+    pub = it.get("publicado_em")
+    if pub:
+        try:
+            if len(pub) == 10:
+                d = datetime.fromisoformat(pub).replace(tzinfo=BRT)
+                tem_hora = False
+            else:
+                d = datetime.fromisoformat(pub)
+                if d.tzinfo is None:
+                    d = d.replace(tzinfo=BRT)
+                d = d.astimezone(BRT)
+                tem_hora = True
+            # sanidade: nem no futuro, nem absurdamente antigo
+            if d <= hoje + timedelta(hours=1) and d >= hoje - timedelta(days=3 * 365):
+                it["adicionado_em"] = d.isoformat(timespec="seconds") if tem_hora else d.date().isoformat()
+                it["adicionado_fonte"] = "portal"
+                it["adicionado_hora"] = tem_hora
+                return
+        except Exception:  # noqa: BLE001
+            pass
+    it["adicionado_em"] = it.get("first_seen_at")
+    it["adicionado_fonte"] = "coleta"
+    it["adicionado_hora"] = True
 
 
 def main() -> int:
@@ -288,7 +324,9 @@ def main() -> int:
             finais.append(it)
         # senão: descarta de vez
 
-    finais.sort(key=lambda x: x.get("first_seen_at") or "", reverse=True)
+    for it in finais:
+        definir_adicionado(it, hoje)
+    finais.sort(key=lambda x: (x.get("adicionado_em") or "", x.get("first_seen_at") or ""), reverse=True)
 
     saida = {
         "gerado_em": iso(agora()),

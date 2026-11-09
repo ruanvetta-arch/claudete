@@ -41,6 +41,8 @@ def conv_wimoveis(raw: dict) -> dict | None:
     url = raw.get("url") or ""
     if url and not url.startswith("http"):
         raw["url"] = "https://www.wimoveis.com.br/propriedades/" + url
+    # Data de publicação: "Publicado hoje" / "Publicado desde ontem" / "Publicado há N dias" / "há mais de 1 ano"
+    publicado, publicado_txt = _pub_wimoveis(raw.get("antiguidade") or "", raw.get("modificado") or "")
     bairro = bairro_bonito(bairro, fallback=bairro_bonito(cidade or "Brasília"))
     return novo_imovel(
         portal="Wimoveis", id_portal=str(raw["id"]), titulo=raw.get("titulo"), preco=preco,
@@ -48,9 +50,52 @@ def conv_wimoveis(raw: dict) -> dict | None:
         regiao=regiao_de(bairro, cidade, raw.get("endereco")), quartos=quartos,
         banheiros=to_int(raw.get("banheiros")), vagas=to_int(raw.get("vagas")), area_m2=to_int(raw.get("area")),
         fotos=[f for f in raw.get("fotos") or [] if f][:10], url=raw.get("url"), lat=raw.get("lat"), lng=raw.get("lng"),
-        publicado_em=(raw.get("modificado") or "")[:10] or None, anunciante=raw.get("anunciante"),
+        publicado_em=publicado, publicado_txt=publicado_txt, anunciante=raw.get("anunciante"),
         **flags_from_text(raw.get("texto") or ""),
     )
+
+
+def _parse_mod(modificado: str) -> datetime | None:
+    try:
+        s = modificado.strip()
+        if len(s) >= 5 and s[-5] in "+-" and ":" not in s[-5:]:
+            s = s[:-2] + ":" + s[-2:]
+        return datetime.fromisoformat(s)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+_REF_PORTAL: dict[str, "date"] = {}
+
+
+def _hoje_portal(modificado: str):
+    """'Hoje' no relógio do portal (fuso diferente do nosso): usa a data do modified_date no fuso dele."""
+    m = _parse_mod(modificado)
+    if m is not None:
+        d = m.date()
+        _REF_PORTAL["wimoveis"] = max(_REF_PORTAL.get("wimoveis", d), d)
+        return d
+    return _REF_PORTAL.get("wimoveis") or datetime.now(BRT).date()
+
+
+def _pub_wimoveis(antiguidade: str, modificado: str) -> tuple[str | None, str | None]:
+    import re
+    a = antiguidade.lower()
+    m = _parse_mod(modificado)
+    hoje = _hoje_portal(modificado)
+    if "hoje" in a:
+        # Publicado hoje: a última atualização de hoje traz a hora da publicação
+        if m is not None and m.date() == hoje:
+            return m.astimezone(BRT).isoformat(timespec="seconds"), None
+        return hoje.isoformat(), None
+    if "ontem" in a:
+        return (hoje - timedelta(days=1)).isoformat(), None
+    m = re.search(r"h[áa]\s+(\d+)\s+dias?", a)
+    if m:
+        return (hoje - timedelta(days=int(m.group(1)))).isoformat(), None
+    if "mais de" in a:
+        return None, antiguidade.replace("Publicado ", "")
+    return None, None
 
 
 def conv_dfimoveis(raw: dict) -> dict | None:
@@ -92,10 +137,18 @@ def main() -> int:
     portal = sys.argv[1]
     nome, fn = CONV[portal]
     itens: dict[str, dict] = {}
+    brutos: list[dict] = []
     for arq in sys.argv[2:]:
         data = json.loads(Path(arq).read_text(encoding="utf-8"))
         if isinstance(data, dict):
             data = data.get("itens") or data.get("imoveis") or []
+        brutos.extend(data)
+    if portal == "wimoveis":
+        # Define o "hoje" do relógio do portal antes de converter
+        for raw in brutos:
+            if "hoje" in (raw.get("antiguidade") or "").lower():
+                _hoje_portal(raw.get("modificado") or "")
+    for data in [brutos]:
         for raw in data:
             it = fn(raw)
             if it:

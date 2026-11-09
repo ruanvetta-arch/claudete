@@ -55,6 +55,14 @@ header{position:sticky;top:0;z-index:20;background:rgba(246,247,244,.92);backdro
 .chip .n{font-size:13px;background:rgba(0,0,0,.06);border-radius:999px;padding:2px 7px;color:inherit}
 .chip[aria-pressed=true] .n{background:rgba(255,255,255,.22)}
 
+/* Seletor de período */
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:#E9EDE9;border-radius:999px;padding:4px;margin-top:14px}
+.seg button{height:46px;border-radius:999px;font-weight:800;font-size:17px;color:var(--ink-2);display:flex;align-items:center;justify-content:center;gap:8px}
+.seg button[aria-selected=true]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.seg .n{font-size:13px;background:var(--green-soft);color:var(--green-dark);border-radius:999px;padding:2px 8px}
+.seg button[aria-selected=true] .n{background:var(--green);color:#fff}
+.meta .when{text-align:right}
+.meta .when.found{color:var(--ink-3)}
 /* Status line */
 .status{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--ink-3);padding:14px 0 2px}
 .status .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
@@ -190,6 +198,7 @@ nav.bottom .cnt{position:absolute;margin-left:28px;margin-top:-4px;background:va
     <div class="chips" id="chips" aria-label="Filtros rápidos"></div>
   </div>
 </header>
+<div class="wrap"><div class="seg" id="seg" role="tablist" aria-label="Período"></div></div>
 
 <main class="wrap" id="main">
   <div class="status" id="status"><span class="dot"></span><span>Carregando as casas…</span></div>
@@ -259,6 +268,7 @@ let imoveis = [], status = null;
 let favs = new Set(store.get('favs', []));
 let hidden = new Set(store.get('hidden', []));
 let view = 'recentes'; // recentes | favoritos | ocultas
+let periodo = 'hoje';  // hoje | ontem | tudo  (só na aba Recentes)
 const F0 = { regioes: [], preco: null, quartos: null, extras: [], ordem: 'recentes', portais: [], q: '' };
 let f = Object.assign({}, F0, store.get('filtros', {}));
 f.q = '';
@@ -274,6 +284,9 @@ const norm = s => (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 const DIAS = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
 const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 
+// Data em que a casa foi anunciada (portal) ou encontrada (plataforma)
+function dataAdd(it){ const v = it.adicionado_em || it.first_seen_at; return v.length===10 ? new Date(v+'T12:00:00') : new Date(v); }
+function diaAdd(it){ return chaveDia(dataAdd(it)); }
 function dataLocal(iso){ return new Date(iso); }
 function chaveDia(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function rotuloDia(d){
@@ -295,12 +308,17 @@ function relativo(iso){
 }
 const MESES_CURTO = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 function hora(d){ return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
-function quandoEntrou(iso){
-  const d = new Date(iso); const hoje = new Date(); const ontem = new Date(hoje); ontem.setDate(hoje.getDate()-1);
-  const k = chaveDia(d);
-  if(k===chaveDia(hoje)) return 'Entrou hoje às '+hora(d);
-  if(k===chaveDia(ontem)) return 'Entrou ontem às '+hora(d);
-  return 'Entrou em '+d.getDate()+' '+MESES_CURTO[d.getMonth()]+(d.getFullYear()!==hoje.getFullYear()?' '+d.getFullYear():'')+' às '+hora(d);
+function quandoEntrou(it){
+  if(it.publicado_txt && it.adicionado_fonte!=='portal') return {txt:'Anunciada '+it.publicado_txt, found:false};
+  const d = dataAdd(it); const hoje = new Date(); const ontem = new Date(hoje); ontem.setDate(hoje.getDate()-1);
+  const k = chaveDia(d); const temHora = it.adicionado_hora !== false && (it.adicionado_em||'').length > 10;
+  const verbo = it.adicionado_fonte==='coleta' ? 'Encontrada' : 'Anunciada';
+  const h = temHora ? ' às '+hora(d) : '';
+  let quando;
+  if(k===chaveDia(hoje)) quando = 'hoje'+h;
+  else if(k===chaveDia(ontem)) quando = 'ontem'+h;
+  else quando = 'em '+d.getDate()+' '+MESES_CURTO[d.getMonth()]+(d.getFullYear()!==hoje.getFullYear()?' '+d.getFullYear():'')+h;
+  return {txt: verbo+' '+quando, found: it.adicionado_fonte==='coleta'};
 }
 
 // ---------- filtros ----------
@@ -311,6 +329,11 @@ function aplicaFiltros(lista){
     if(view==='favoritos' && !favs.has(it.id)) return false;
     if(view==='ocultas' && !hidden.has(it.id)) return false;
     if(view==='recentes' && hidden.has(it.id)) return false;
+    if(view==='recentes' && periodo!=='tudo'){
+      const hoje = new Date(); const ontem = new Date(hoje); ontem.setDate(hoje.getDate()-1);
+      const alvo = periodo==='hoje' ? chaveDia(hoje) : chaveDia(ontem);
+      if(diaAdd(it) !== alvo) return false;
+    }
     if(f.regioes.length && !f.regioes.includes(it.regiao)) return false;
     if(f.preco){ const p=PRECOS[f.preco-1]; if(it.preco < p[1] || it.preco >= p[2]) return false; }
     if(f.quartos && (it.quartos||0) < f.quartos) return false;
@@ -322,7 +345,7 @@ function aplicaFiltros(lista){
 }
 function ordena(lista){
   const c = {
-    recentes: (a,b)=> (b.first_seen_at||'').localeCompare(a.first_seen_at||''),
+    recentes: (a,b)=> (dataAdd(b) - dataAdd(a)) || (b.first_seen_at||'').localeCompare(a.first_seen_at||''),
     preco_asc: (a,b)=> a.preco-b.preco,
     preco_desc: (a,b)=> b.preco-a.preco,
     area_desc: (a,b)=> (b.area_m2||0)-(a.area_m2||0),
@@ -338,9 +361,24 @@ function renderTabs(){
   const html = tabs.map(([k,l,ic]) => `<button role="tab" aria-selected="${view===k}" data-view="${k}">${ic}<span>${l}</span>${k==='favoritos'&&nf?`<span class="cnt">${nf}</span>`:''}</button>`).join('');
   $('#tabsBottom').innerHTML = html;
   $('#tabsTop').innerHTML = tabs.map(([k,l]) => `<button class="tab" role="tab" aria-selected="${view===k}" data-view="${k}">${l}${k==='favoritos'&&nf?` · ${nf}`:''}</button>`).join('');
-  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { view = b.dataset.view; renderTabs(); render(); window.scrollTo({top:0}); });
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { view = b.dataset.view; renderTabs(); renderSeg(); render(); window.scrollTo({top:0}); });
 }
 
+function contaPeriodo(){
+  const hoje = new Date(); const ontem = new Date(hoje); ontem.setDate(hoje.getDate()-1);
+  const kh = chaveDia(hoje), ko = chaveDia(ontem);
+  let h=0,o=0,t=0;
+  for(const it of imoveis){ if(it.inativo || hidden.has(it.id)) continue; t++; const k = diaAdd(it); if(k===kh) h++; else if(k===ko) o++; }
+  return {h,o,t};
+}
+function renderSeg(){
+  const seg = $('#seg');
+  if(view!=='recentes'){ seg.style.display='none'; return; }
+  seg.style.display='grid';
+  const c = contaPeriodo();
+  seg.innerHTML = [['hoje','Hoje',c.h],['ontem','Ontem',c.o],['tudo','Tudo',c.t]].map(([k,l,n]) => `<button role="tab" aria-selected="${periodo===k}" data-periodo="${k}">${l}<span class="n">${n}</span></button>`).join('');
+  seg.querySelectorAll('[data-periodo]').forEach(b => b.onclick = () => { periodo = b.dataset.periodo; store.set('periodo', periodo); store.set('periodoEscolhido', true); renderSeg(); render(); window.scrollTo({top:0}); });
+}
 function renderChips(){
   const ativos = aplicaFiltros(imoveis.filter(i=>!i.inativo));
   const cont = {}; imoveis.forEach(i=>{ if(!i.inativo && !hidden.has(i.id)) cont[i.regiao]=(cont[i.regiao]||0)+1; });
@@ -368,7 +406,8 @@ function renderStatus(){
 
 function card(it){
   const fotos = (it.fotos||[]).slice(0,6);
-  const novo = (Date.now()-new Date(it.first_seen_at)) < 86400000;
+  const novo = diaAdd(it) === chaveDia(new Date());
+  const quando = quandoEntrou(it);
   const seen = hidden.has(it.id);
   const feats = [];
   if(it.quartos) feats.push(`<span>${ICON.bed}${it.quartos} ${it.quartos===1?'quarto':'quartos'}</span>`);
@@ -404,7 +443,7 @@ function card(it){
       <div class="where">${it.bairro}${it.regiao && norm(it.regiao)!==norm(it.bairro)? `<span>${it.regiao}</span>`:''}</div>
       <div class="feats">${feats.join('')}</div>
       ${pills.length?`<div class="pills">${pills.join('')}</div>`:''}
-      <div class="meta"><span class="src" data-src>${src}</span><span title="${relativo(it.first_seen_at)}">${quandoEntrou(it.first_seen_at)}</span></div>
+      <div class="meta"><span class="src" data-src>${src}</span><span class="when${quando.found?' found':''}" title="${quando.found?'O portal não informa a data do anúncio; esta é a hora em que a claudete encontrou':'Data informada pelo portal'}">${quando.txt}</span></div>
       ${srcList}
     </div>
     <div class="actions">
@@ -419,13 +458,19 @@ function render(){
   const lista = ordena(aplicaFiltros(imoveis));
   const root = $('#list');
   if(!lista.length){
-    const msgs = {
+    let msgs = {
       recentes: ['Nenhuma casa com esses filtros','Tente tirar um filtro ou buscar outro bairro.'],
       favoritos: ['Nenhuma favorita ainda','Toque no coração de uma casa para guardá-la aqui.'],
       ocultas: ['Nada escondido','As casas que você marcar como "Já vi" ficam aqui.'],
     }[view];
-    root.innerHTML = `<div class="empty-state"><h3>${msgs[0]}</h3><p>${msgs[1]}</p>${filtrosAtivos()||f.q?`<button class="btn primary" id="limparTudo">Limpar filtros</button>`:''}</div>`;
+    let extra = '';
+    if(view==='recentes' && periodo!=='tudo' && !filtrosAtivos() && !f.q){
+      msgs = periodo==='hoje' ? ['Nenhuma casa nova hoje ainda','Os sites são conferidos às 7h e às 13h. Enquanto isso, veja as de ontem ou todas.'] : ['Nenhuma casa anunciada ontem','Veja todas as casas disponíveis.'];
+      extra = `<button class="btn primary" id="verTudo">Ver todas as casas</button>`;
+    }
+    root.innerHTML = `<div class="empty-state"><h3>${msgs[0]}</h3><p>${msgs[1]}</p>${extra}${filtrosAtivos()||f.q?`<button class="btn primary" id="limparTudo">Limpar filtros</button>`:''}</div>`;
     const b=$('#limparTudo'); if(b) b.onclick = limparTudo;
+    const vt=$('#verTudo'); if(vt) vt.onclick = () => { periodo='tudo'; store.set('periodo', periodo); renderSeg(); render(); };
     return;
   }
   // Renderização progressiva: lotes de 24 cards, carregando ao rolar
@@ -433,7 +478,7 @@ function render(){
   const grupos = [];
   if(f.ordem==='recentes' && view==='recentes'){
     const m = new Map();
-    for(const it of lista){ const d = dataLocal(it.first_seen_at); const k = chaveDia(d); if(!m.has(k)) m.set(k,{d,itens:[]}); m.get(k).itens.push(it); }
+    for(const it of lista){ const d = dataAdd(it); const k = chaveDia(d); if(!m.has(k)) m.set(k,{d,itens:[]}); m.get(k).itens.push(it); }
     for(const g of m.values()) grupos.push({titulo: rotuloDia(g.d), sub: `${g.itens.length} ${g.itens.length===1?'casa':'casas'}`, itens: g.itens});
   } else {
     grupos.push({titulo: view==='favoritos'?'Favoritas':view==='ocultas'?'Já vi':'Casas', sub: String(lista.length), itens: lista});
@@ -471,7 +516,7 @@ function render(){
 function bindCard(el){
     const id = el.dataset.id;
     $('[data-fav]', el).onclick = (e) => { e.preventDefault(); favs.has(id)? favs.delete(id): favs.add(id); store.set('favs',[...favs]); const b=e.currentTarget; b.setAttribute('aria-pressed', favs.has(id)); b.innerHTML = favs.has(id)?ICON.heart:ICON.heartO; renderTabs(); if(view==='favoritos') render(); toast(favs.has(id)?'Guardada nas favoritas':'Removida das favoritas'); };
-    $('[data-hide]', el).onclick = () => { const was = hidden.has(id); was? hidden.delete(id): hidden.add(id); store.set('hidden',[...hidden]); render(); renderChips(); toast(was?'Casa de volta na lista':'Escondida. Veja em "Já vi".', was?null:()=>{ hidden.delete(id); store.set('hidden',[...hidden]); render(); renderChips(); }); };
+    $('[data-hide]', el).onclick = () => { const was = hidden.has(id); was? hidden.delete(id): hidden.add(id); store.set('hidden',[...hidden]); render(); renderChips(); renderSeg(); toast(was?'Casa de volta na lista':'Escondida. Veja em "Já vi".', was?null:()=>{ hidden.delete(id); store.set('hidden',[...hidden]); render(); renderChips(); }); };
     const track = $('[data-track]', el);
     if(track){
       const dots = el.querySelectorAll('.dots i'); const count = $('[data-count]', el); const n = track.children.length;
@@ -569,7 +614,10 @@ async function carregar(){
     imoveis = (a.imoveis||[]).filter(i=>i && i.preco && i.first_seen_at);
     status = b;
   }catch(e){ imoveis=[]; status=null; }
-  renderStatus(); renderTabs(); renderChips(); render();
+  periodo = store.get('periodo', 'hoje');
+  // Se não há nada hoje, abre em "Tudo" para a tela nunca vir vazia na primeira visita
+  if(periodo==='hoje' && !store.get('periodoEscolhido', false) && contaPeriodo().h===0) periodo = 'tudo';
+  renderStatus(); renderTabs(); renderSeg(); renderChips(); render();
   if(!imoveis.length){
     $('#list').innerHTML = `<div class="empty-state"><h3>Ainda não há casas aqui</h3><p>A primeira coleta acontece em instantes. Volte daqui a pouco.</p></div>`;
   }

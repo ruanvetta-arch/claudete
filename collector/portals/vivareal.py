@@ -46,6 +46,18 @@ def _img(url_tpl: str) -> str | None:
             .replace("{width}", "870").replace("{height}", "653"))
 
 
+def _iso_brt(ts: str | None) -> str | None:
+    """'2026-11-08T13:15:33.501+00:00' -> '2026-11-08T10:15:33-03:00'."""
+    if not ts:
+        return None
+    from datetime import datetime, timedelta, timezone
+    try:
+        d = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return d.astimezone(timezone(timedelta(hours=-3))).isoformat(timespec="seconds")
+    except Exception:  # noqa: BLE001
+        return ts[:10] or None
+
+
 def _first(v):
     if isinstance(v, list):
         return v[0] if v else None
@@ -99,7 +111,7 @@ def _parse(item: dict) -> dict | None:
         url=url,
         lat=pt.get("lat"),
         lng=pt.get("lon"),
-        publicado_em=(lst.get("createdAt") or "")[:10] or None,
+        publicado_em=_iso_brt(lst.get("createdAt")),
         anunciante=(item.get("account") or {}).get("name"),
         **flags,
     )

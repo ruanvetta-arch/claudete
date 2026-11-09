@@ -209,7 +209,8 @@ def novo_imovel(**kw) -> dict[str, Any]:
         "url": None,
         "lat": None,
         "lng": None,
-        "publicado_em": None,
+        "publicado_em": None,   # data (YYYY-MM-DD) ou data+hora ISO em que o portal publicou
+        "publicado_txt": None,  # texto quando o portal só dá algo vago ("há mais de 1 ano")
         "anunciante": None,
     }
     base.update(kw)

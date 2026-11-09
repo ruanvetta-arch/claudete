@@ -45,6 +45,7 @@
         url: "https://www.wimoveis.com.br" + (p.url || ""),
         lat: geo.latitude || null, lng: geo.longitude || null,
         modificado: p.modified_date || null,
+        antiguidade: p.antiquity || null,
         anunciante: (p.publisher || {}).name || null,
         texto: ((p.title || "") + " " + (p.descriptionNormalized || "") + " " + gfText).slice(0, 600),
       });
@@ -58,7 +59,7 @@
     const r = { ...o, fotos: ids.slice(0, 8), url: o.url.replace("https://www.wimoveis.com.br/propriedades/", ""),
       texto: [...new Set((o.texto.match(KW) || []).map(s => s.toLowerCase()))].join(" "),
       titulo: (o.titulo || "").slice(0, 80), endereco: (o.endereco || "").slice(0, 60),
-      anunciante: (o.anunciante || "").slice(0, 40), modificado: (o.modificado || "").slice(0, 10) };
+      anunciante: (o.anunciante || "").slice(0, 40), modificado: (o.modificado || "").slice(0, 25), antiguidade: (o.antiguidade || "").slice(0, 40) };
     if (r.bairro_label === "CIUDAD") r.bairro_cidade = true;
     delete r.bairro_label;
     return r;
