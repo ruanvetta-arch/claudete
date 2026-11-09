@@ -15,5 +15,10 @@ jobs:
       - name: Apertar o botão
         if: ${{ inputs.apertar }}
         run: curl -s -X POST https://claudete.vercel.app/api/atualizar; echo
+      - name: Página de instalação e pacote da extensão
+        run: |
+          curl -s -o /dev/null -w "instalar: %{http_code}\n" https://claudete.vercel.app/instalar
+          curl -s -o /tmp/c.zip -w "zip: %{http_code} %{size_download} bytes\n" https://claudete.vercel.app/claudete-coletor.zip
+          curl -s -X POST -H 'content-type: application/json' -d '{"portal":"olx","itens":[]}' https://claudete.vercel.app/api/receber; echo
       - name: Status dos dados
         run: curl -s https://claudete.vercel.app/data/status.json | head -c 600; echo
