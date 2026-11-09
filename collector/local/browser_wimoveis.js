@@ -33,7 +33,9 @@
       out.push({
         id: String(p.postingId),
         titulo: p.generatedTitle || p.title,
-        preco: ((((p.priceOperationTypes || [])[0] || {}).prices || [])[0] || {}).amount || null,
+        // Só o preço da operação ALUGUEL (id 2); anúncios de venda+aluguel vêm com a venda primeiro
+        preco: ((((p.priceOperationTypes || []).find(o => String((o.operationType || {}).operationTypeId) === "2") || {}).prices || [])[0] || {}).amount || null,
+        operacoes: (p.priceOperationTypes || []).map(o => (o.operationType || {}).name).join("/"),
         condominio: (p.expenses || {}).amount || null,
         bairro: loc.name || null,
         bairro_label: loc.label || null,

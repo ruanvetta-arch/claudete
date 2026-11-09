@@ -174,11 +174,24 @@ nav.bottom .cnt{position:absolute;margin-left:28px;margin-top:-4px;background:va
 .sheet h3{margin:14px 0 8px;font-size:17px;color:var(--ink-2)}
 .sheet h3:first-of-type{margin-top:0}
 .opts{display:flex;flex-wrap:wrap;gap:8px}
+.range{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.range label{display:flex;align-items:center;gap:6px;background:var(--bg);border:1.5px solid var(--line);border-radius:14px;padding:0 12px;height:52px;font-weight:700;color:var(--ink-2);font-size:15px}
+.range label:focus-within{border-color:var(--green)}
+.range .rs{color:var(--ink-3)}
+.range input{flex:1;min-width:0;border:0;background:none;font:inherit;font-size:18px;font-weight:800;color:var(--ink);outline:none;-moz-appearance:textfield}
+.range input::-webkit-outer-spin-button,.range input::-webkit-inner-spin-button{-webkit-appearance:none}
+.refresh{display:inline-flex;align-items:center;gap:6px;margin-left:auto;height:34px;padding:0 12px;border-radius:999px;background:#fff;border:1.5px solid var(--line);font-weight:800;font-size:14px;color:var(--green-dark);white-space:nowrap}
+.refresh:disabled{opacity:.6}
+.refresh svg{width:16px;height:16px}
+.refresh.spin svg{animation:rot 1s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
 .sheet .row{display:flex;gap:10px;margin-top:18px}
 .sheet .row .btn{flex:1}
 .sheet .btn.secondary{background:var(--bg);color:var(--ink)}
-.toast{position:fixed;left:50%;bottom:calc(96px + var(--safe-b));transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:12px 18px;border-radius:999px;font-weight:700;opacity:0;transition:.2s;z-index:50;pointer-events:none;white-space:nowrap}
-.toast.on{opacity:1;transform:translateX(-50%)}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(96px + var(--safe-b));transform:translateY(20px);background:var(--ink);color:#fff;padding:12px 18px;border-radius:16px;font-weight:700;opacity:0;transition:.2s;z-index:50;pointer-events:none;text-align:center;font-size:15px;line-height:1.35}
+@media(min-width:600px){.toast{left:50%;right:auto;transform:translateX(-50%) translateY(20px);max-width:520px}}
+.toast.on{opacity:1;transform:none}
+@media(min-width:600px){.toast.on{transform:translateX(-50%)}}
 .toast button{color:var(--ipe);margin-left:10px;pointer-events:auto;font-weight:800}
 </style>
 </head>
@@ -202,6 +215,7 @@ nav.bottom .cnt{position:absolute;margin-left:28px;margin-top:-4px;background:va
 
 <main class="wrap" id="main">
   <div class="status" id="status"><span class="dot"></span><span>Carregando as casas…</span></div>
+  <div style="display:flex;align-items:center;margin-top:8px"><button class="refresh" id="refresh" title="Buscar casas novas nos sites agora"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>Atualizar agora</button></div>
   <div id="list"><div class="grid" style="margin-top:22px"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></div>
 </main>
 
@@ -214,9 +228,15 @@ nav.bottom .cnt{position:absolute;margin-left:28px;margin-top:-4px;background:va
     <strong style="font-size:20px">Filtros</strong>
     <button class="btn ghost" id="fecharSheet" aria-label="Fechar filtros" style="height:40px;width:40px;border-radius:50%">✕</button>
   </div>
-  <h3 id="sheetTitle">Região</h3>
+  <h3 id="sheetTitle">Quando foi anunciada</h3>
+  <div class="opts" id="optPeriodo"></div>
+  <h3>Região</h3>
   <div class="opts" id="optRegiao"></div>
   <h3>Preço por mês</h3>
+  <div class="range">
+    <label>De<span class="rs">R$</span><input id="precoMin" type="number" inputmode="numeric" min="0" step="100" placeholder="0"></label>
+    <label>Até<span class="rs">R$</span><input id="precoMax" type="number" inputmode="numeric" min="0" step="100" placeholder="sem limite"></label>
+  </div>
   <div class="opts" id="optPreco"></div>
   <h3>Quartos</h3>
   <div class="opts" id="optQuartos"></div>
@@ -269,9 +289,9 @@ let favs = new Set(store.get('favs', []));
 let hidden = new Set(store.get('hidden', []));
 let view = 'recentes'; // recentes | favoritos | ocultas
 let periodo = 'hoje';  // hoje | ontem | tudo  (só na aba Recentes)
-const F0 = { regioes: [], preco: null, quartos: null, extras: [], ordem: 'recentes', portais: [], q: '' };
+const F0 = { regioes: [], precoMin: null, precoMax: null, quartos: null, extras: [], ordem: 'recentes', portais: [], q: '' };
 let f = Object.assign({}, F0, store.get('filtros', {}));
-f.q = '';
+f.q = ''; delete f.preco;
 
 const PRECOS = [['Até R$ 2.500',0,2500],['R$ 2.500 a 4.000',2500,4000],['R$ 4.000 a 6.000',4000,6000],['R$ 6.000 a 10.000',6000,10000],['Acima de R$ 10.000',10000,1e9]];
 const QUARTOS = [['2+',2],['3+',3],['4+',4]];
@@ -335,7 +355,8 @@ function aplicaFiltros(lista){
       if(diaAdd(it) !== alvo) return false;
     }
     if(f.regioes.length && !f.regioes.includes(it.regiao)) return false;
-    if(f.preco){ const p=PRECOS[f.preco-1]; if(it.preco < p[1] || it.preco >= p[2]) return false; }
+    if(f.precoMin && it.preco < f.precoMin) return false;
+    if(f.precoMax && it.preco > f.precoMax) return false;
     if(f.quartos && (it.quartos||0) < f.quartos) return false;
     for(const e of f.extras){ if(!it[e]) return false; }
     if(f.portais.length && !f.portais.includes(it.portal)) return false;
@@ -352,7 +373,7 @@ function ordena(lista){
   }[f.ordem] || ((a,b)=>0);
   return lista.slice().sort(c);
 }
-function filtrosAtivos(){ return f.regioes.length + (f.preco?1:0) + (f.quartos?1:0) + f.extras.length + f.portais.length + (f.ordem!=='recentes'?1:0); }
+function filtrosAtivos(){ return f.regioes.length + ((f.precoMin||f.precoMax)?1:0) + (f.quartos?1:0) + f.extras.length + f.portais.length + (f.ordem!=='recentes'?1:0); }
 
 // ---------- render ----------
 function renderTabs(){
@@ -576,7 +597,10 @@ function renderSheet(){
   const cont = {}; imoveis.forEach(i=>{ if(!i.inativo) cont[i.regiao]=(cont[i.regiao]||0)+1; });
   const regs = Object.keys(cont).sort((a,b)=> cont[b]-cont[a]);
   $('#optRegiao').innerHTML = regs.map(r => optBtn(`${r} <span class="n">${cont[r]}</span>`, f.regioes.includes(r), `data-sr="${r}"`)).join('');
-  $('#optPreco').innerHTML = optBtn('Qualquer', !f.preco, 'data-sp="0"') + PRECOS.map((p,i)=> optBtn(p[0], f.preco===i+1, `data-sp="${i+1}"`)).join('');
+  const cp = contaPeriodo();
+  $('#optPeriodo').innerHTML = [['hoje','Hoje',cp.h],['ontem','Ontem',cp.o],['tudo','Todas',cp.t]].map(([k,l,n]) => optBtn(`${l} <span class="n">${n}</span>`, periodo===k, `data-sper="${k}"`)).join('');
+  $('#precoMin').value = f.precoMin || ''; $('#precoMax').value = f.precoMax || '';
+  $('#optPreco').innerHTML = optBtn('Qualquer', !f.precoMin && !f.precoMax, 'data-sp="0"') + PRECOS.map((p,i)=> optBtn(p[0], f.precoMin===(p[1]||null) && f.precoMax===(p[2]>=1e9?null:p[2]), `data-sp="${i+1}"`)).join('');
   $('#optQuartos').innerHTML = optBtn('Qualquer', !f.quartos, 'data-sq="0"') + QUARTOS.map(([l,v])=> optBtn(l+' quartos', f.quartos===v, `data-sq="${v}"`)).join('');
   $('#optExtras').innerHTML = EXTRAS.map(([l,k])=> optBtn(l, f.extras.includes(k), `data-se="${k}"`)).join('');
   $('#optOrdem').innerHTML = ORDENS.map(([l,k])=> optBtn(l, f.ordem===k, `data-so="${k}"`)).join('');
@@ -584,7 +608,10 @@ function renderSheet(){
   $('#optPortal').innerHTML = portais.map(p=> optBtn(p, f.portais.includes(p), `data-spt="${p}"`)).join('');
   const sh = $('#sheet');
   sh.querySelectorAll('[data-sr]').forEach(b=> b.onclick=()=>{ toggle(f.regioes,b.dataset.sr); renderSheet(); });
-  sh.querySelectorAll('[data-sp]').forEach(b=> b.onclick=()=>{ f.preco = +b.dataset.sp||null; renderSheet(); });
+  sh.querySelectorAll('[data-sp]').forEach(b=> b.onclick=()=>{ const i=+b.dataset.sp; if(!i){ f.precoMin=null; f.precoMax=null; } else { const p=PRECOS[i-1]; f.precoMin=p[1]||null; f.precoMax=p[2]>=1e9?null:p[2]; } renderSheet(); });
+  sh.querySelectorAll('[data-sper]').forEach(b=> b.onclick=()=>{ periodo = b.dataset.sper; store.set('periodo', periodo); store.set('periodoEscolhido', true); view='recentes'; renderTabs(); renderSeg(); renderSheet(); });
+  const lerPreco = () => { f.precoMin = +$('#precoMin').value || null; f.precoMax = +$('#precoMax').value || null; const n = aplicaFiltros(imoveis).length; $('#aplicar').textContent = n? `Ver ${n} ${n===1?'casa':'casas'}` : 'Nenhuma casa assim'; sh.querySelectorAll('[data-sp]').forEach(x=>x.setAttribute('aria-pressed','false')); };
+  $('#precoMin').oninput = lerPreco; $('#precoMax').oninput = lerPreco;
   sh.querySelectorAll('[data-sq]').forEach(b=> b.onclick=()=>{ f.quartos = +b.dataset.sq||null; renderSheet(); });
   sh.querySelectorAll('[data-se]').forEach(b=> b.onclick=()=>{ toggle(f.extras,b.dataset.se); renderSheet(); });
   sh.querySelectorAll('[data-so]').forEach(b=> b.onclick=()=>{ f.ordem = b.dataset.so; renderSheet(); });
@@ -602,6 +629,32 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape' && $('#sheet').cla
 let qT;
 $('#q').addEventListener('input', e => { f.q = e.target.value; $('#searchBox').classList.toggle('has', !!f.q); clearTimeout(qT); qT=setTimeout(render, 120); });
 $('#clearQ').onclick = () => { $('#q').value=''; f.q=''; $('#searchBox').classList.remove('has'); render(); $('#q').focus(); };
+
+// ---------- atualizar agora ----------
+(() => {
+  const btn = $('#refresh');
+  let poll = null;
+  btn.onclick = async () => {
+    btn.disabled = true; btn.classList.add('spin'); btn.lastChild.textContent = 'Buscando nos sites…';
+    const antes = status && status.gerado_em;
+    let ok = false, msg = '';
+    try {
+      const r = await fetch('/api/atualizar', {method:'POST'});
+      const j = await r.json().catch(()=>({}));
+      ok = r.ok && j.ok; msg = j.mensagem || '';
+    } catch(e){ ok = false; }
+    if(!ok){ btn.disabled=false; btn.classList.remove('spin'); btn.lastChild.textContent='Atualizar agora'; toast(msg || 'Não consegui iniciar a atualização agora. Tente de novo em instantes.'); return; }
+    toast('Atualização iniciada. Leva uns 3 minutos; a lista recarrega sozinha.');
+    const t0 = Date.now();
+    poll = setInterval(async () => {
+      try {
+        const s = await fetch('/data/status.json?v='+Date.now(), {cache:'no-store'}).then(r=>r.json());
+        if(s && s.gerado_em && s.gerado_em !== antes){ clearInterval(poll); toast('Casas atualizadas!'); setTimeout(()=>location.reload(), 900); }
+      } catch(e){}
+      if(Date.now()-t0 > 8*60*1000){ clearInterval(poll); btn.disabled=false; btn.classList.remove('spin'); btn.lastChild.textContent='Atualizar agora'; toast('A atualização está demorando; recarregue a página daqui a pouco.'); }
+    }, 15000);
+  };
+})();
 
 // ---------- carga ----------
 async function carregar(){

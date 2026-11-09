@@ -29,7 +29,10 @@ def _foto_wi(posting_id: str, pic: str, first: bool) -> str:
 def conv_wimoveis(raw: dict) -> dict | None:
     quartos = to_int(raw.get("quartos"))
     preco = to_int(raw.get("preco"))
-    if quartos is None or quartos < MIN_QUARTOS or not preco or preco < 300:
+    if quartos is None or quartos < MIN_QUARTOS or not preco or preco < 300 or preco > TETO_ALUGUEL:
+        return None
+    # Anúncios "há mais de 1 ano" no Wimoveis são, na prática, imóveis à venda: fora
+    if "mais de" in (raw.get("antiguidade") or "").lower():
         return None
     bairro, cidade = raw.get("bairro"), raw.get("cidade")
     if raw.get("bairro_label") == "CIUDAD" or raw.get("bairro_cidade"):
@@ -98,10 +101,14 @@ def _pub_wimoveis(antiguidade: str, modificado: str) -> tuple[str | None, str | 
     return None, None
 
 
+# Aluguel mensal acima disso em Brasília é, na prática, preço de venda mal classificado
+TETO_ALUGUEL = 150000
+
+
 def conv_dfimoveis(raw: dict) -> dict | None:
     quartos = to_int(raw.get("quartos"))
     preco = to_int(raw.get("preco"))
-    if quartos is None or quartos < MIN_QUARTOS or not preco or preco < 300:
+    if quartos is None or quartos < MIN_QUARTOS or not preco or preco < 300 or preco > TETO_ALUGUEL:
         return None
     street = raw.get("street") or ""
     partes = [p.strip() for p in street.split(",") if p.strip()]
@@ -130,7 +137,55 @@ def conv_dfimoveis(raw: dict) -> dict | None:
     )
 
 
-CONV = {"wimoveis": ("Wimoveis", conv_wimoveis), "dfimoveis": ("DF Imóveis", conv_dfimoveis)}
+def conv_olx(raw: dict) -> dict | None:
+    quartos = to_int(raw.get("quartos"))
+    preco = to_int(raw.get("preco"))
+    if quartos is None or quartos < MIN_QUARTOS or not preco or preco < 300 or preco > TETO_ALUGUEL:
+        return None
+    texto = raw.get("texto") or ""
+    # Só aluguel residencial: a OLX mistura "Aluguel - casa em condomínio", "rua pública" etc.; descarta temporada
+    if "temporada" in texto.lower():
+        return None
+    # "Ceilândia Norte (Ceilândia)" -> bairro "Ceilândia Norte", região via parêntese
+    b = raw.get("bairro") or ""
+    m = __import__("re").match(r"^(.*?)\s*\((.*?)\)\s*$", b)
+    bairro_nome, ra = (m.group(1), m.group(2)) if m else (b, None)
+    bairro = bairro_bonito(bairro_nome or ra or raw.get("cidade") or "Brasília")
+    regiao = regiao_de(bairro_nome, ra, raw.get("cidade"))
+    pub = None
+    if raw.get("publicado"):
+        try:
+            pub = datetime.fromtimestamp(int(raw["publicado"]), BRT).isoformat(timespec="seconds")
+        except Exception:  # noqa: BLE001
+            pub = None
+    area = to_int(raw.get("area"))
+    if area is not None and area < 15:
+        area = None  # "4m²" é erro de digitação do anunciante
+    # Fotos compactadas pelo script do navegador: "545684349542449.webp" -> URL completa (pasta = 2 primeiros dígitos)
+    fotos = []
+    for f in raw.get("fotos") or []:
+        f = str(f)
+        if f.startswith("http"):
+            fotos.append(f)
+        elif f:
+            fotos.append(f"https://img.olx.com.br/images/{f[:2]}/{f if '.' in f else f + '.webp'}")
+    raw["fotos"] = fotos
+    url = raw.get("url") or ""
+    if url and not url.startswith("http"):
+        raw["url"] = "https://df.olx.com.br/" + url
+    flags = flags_from_text(texto)
+    if "aceita pet" in texto.lower():
+        flags["aceita_pet"] = True
+    return novo_imovel(
+        portal="OLX", id_portal=str(raw["id"]), titulo=raw.get("titulo") or "Casa para alugar", preco=preco,
+        condominio=to_int(raw.get("condominio")) or None, bairro=bairro, regiao=regiao, quartos=quartos,
+        banheiros=to_int(raw.get("banheiros")), vagas=to_int(raw.get("vagas")), area_m2=area,
+        fotos=[f for f in raw.get("fotos") or [] if f][:12], url=raw.get("url"), publicado_em=pub,
+        anunciante=("Imobiliária" if raw.get("profissional") else "Proprietário"), **flags,
+    )
+
+
+CONV = {"wimoveis": ("Wimoveis", conv_wimoveis), "dfimoveis": ("DF Imóveis", conv_dfimoveis), "olx": ("OLX", conv_olx)}
 
 
 def main() -> int:

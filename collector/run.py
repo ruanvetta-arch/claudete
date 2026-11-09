@@ -25,6 +25,8 @@ PUBLIC_DATA = ROOT / "public" / "data"
 
 BRT = timezone(timedelta(hours=-3))
 DIAS_PARA_INATIVAR = 3
+TETO_ALUGUEL = 150000  # R$/mês; acima disso é venda mal classificada
+TETO_POR_M2 = 300      # R$/m²/mês; acima disso (e > 20 mil) é venda mal classificada
 
 # Portais coletados direto do GitHub Actions (respondem a IP de datacenter).
 PORTAIS = [vivareal, quintoandar, chavesnamao]
@@ -33,7 +35,7 @@ PORTAIS = [vivareal, quintoandar, chavesnamao]
 EXTERNOS_DIR = ROOT / "data" / "externos"
 EXTERNOS_VALIDADE_DIAS = 4
 # Ordem de prioridade para escolher o registro "principal" quando há duplicata
-PRIORIDADE = {"QuintoAndar": 0, "Wimoveis": 1, "DF Imóveis": 2, "VivaReal": 3, "Chaves na Mão": 4}
+PRIORIDADE = {"QuintoAndar": 0, "Wimoveis": 1, "DF Imóveis": 2, "OLX": 3, "VivaReal": 4, "Chaves na Mão": 5}
 
 
 def agora() -> datetime:
@@ -176,6 +178,18 @@ def enriquecer_fotos(coletados: list[dict], antigos: dict[str, dict]) -> None:
     print(f"[fotos] páginas de detalhe visitadas: {feitos} em {int(time.time()-t0)}s", flush=True)
 
 
+def eh_aluguel_plausivel(it: dict) -> bool:
+    p = it.get("preco") or 0
+    if p <= 0 or p > TETO_ALUGUEL:
+        return False
+    a = it.get("area_m2") or 0
+    if a and p > 20000 and p / a > TETO_POR_M2:
+        return False
+    if not a and p > 60000:
+        return False  # mansão de verdade sempre informa área; sem área e caríssimo = venda
+    return True
+
+
 def definir_adicionado(it: dict, hoje: datetime) -> None:
     """adicionado_em = data de publicação informada pelo portal; senão, quando a plataforma encontrou.
 
@@ -271,6 +285,12 @@ def main() -> int:
                 print(f"[externo] {f.name}: {e}", flush=True)
 
     portais_ok = {n for n, s in status_portais.items() if s["ok"]}
+
+    # Sanidade: preço de aluguel acima do teto é anúncio de venda mal classificado
+    antes = len(coletados)
+    coletados = [it for it in coletados if eh_aluguel_plausivel(it)]
+    if antes != len(coletados):
+        print(f"[sanidade] {antes - len(coletados)} anúncios descartados por preço acima de R$ {TETO_ALUGUEL}", flush=True)
 
     # Enriquecimento de fotos: portais cuja listagem traz só 1 foto.
     # Só para anúncios que ainda não conhecemos (ou que têm <= 1 foto), com teto de tempo.
