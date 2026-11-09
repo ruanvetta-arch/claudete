@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       url:
-        description: URL para testar (ou "fontes" para testar várias)
+        description: modo
         required: true
 jobs:
   fetch:
@@ -13,42 +13,43 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -r collector/requirements.txt curl_cffi
-      - name: Testes de acesso
-        env:
-          URL: ${{ inputs.url }}
+      - name: Testes
         run: |
           python - <<'PY'
-          import os, re, sys, json
+          import re, json
           from curl_cffi import requests as cr
-          url=os.environ['URL']
-          def resumo(tag, r):
-              t=r.text or ''
-              title=re.search(r'<title>([^<]*)',t)
-              print(f"== {tag}: status={r.status_code} len={len(t)} cf={'Just a moment' in t} title={title.group(1)[:70] if title else None} head={t[:160]!r}")
-          tests = []
-          if url == 'fontes':
-              tests = [
-                ('vivareal-glue', 'https://glue-api.vivareal.com/v2/listings?addressCity=Bras%C3%ADlia&addressState=Distrito%20Federal&addressLocationId=BR%3EDistrito%20Federal%3ENULL%3EBrasilia&business=RENTAL&categoryPage=RESULT&listingType=USED&unitTypes=HOME&unitTypesV3=HOME&usageTypes=RESIDENTIAL&bedrooms=2&size=36&from=0&includeFields=search(result(listings(listing(id,title,address,bedrooms,bathrooms,parkingSpaces,usableAreas,totalAreas,pricingInfos,amenities,images,updatedAt,createdAt),link(href)),totalCount))', {'x-domain':'www.vivareal.com.br','referer':'https://www.vivareal.com.br/','origin':'https://www.vivareal.com.br'}),
-                ('zap-glue', 'https://glue-api.zapimoveis.com.br/v2/listings?addressCity=Bras%C3%ADlia&addressState=Distrito%20Federal&addressLocationId=BR%3EDistrito%20Federal%3ENULL%3EBrasilia&business=RENTAL&categoryPage=RESULT&listingType=USED&unitTypes=HOME&usageTypes=RESIDENTIAL&bedrooms=2&size=36&from=0&includeFields=search(result(listings(listing(id,title,address,bedrooms,pricingInfos,images),link(href)),totalCount))', {'x-domain':'www.zapimoveis.com.br','referer':'https://www.zapimoveis.com.br/','origin':'https://www.zapimoveis.com.br'}),
-                ('nestoria-api', 'https://api.nestoria.com.br/api?encoding=json&pretty=0&action=search_listings&country=br&listing_type=rent&property_type=house&bedroom_min=2&place_name=Distrito%20Federal&number_of_results=50&page=1&sort=newest', {}),
-                ('nestoria-html', 'https://www.nestoria.com.br/distrito-federal/casas/aluguel?bedrooms=2', {}),
-                ('olx', 'https://www.olx.com.br/imoveis/aluguel/casas/estado-df?ros=2', {}),
-                ('imovelweb', 'https://www.imovelweb.com.br/casas-aluguel-distrito-federal-mais-de-2-quartos.html', {}),
-                ('trovit', 'https://imoveis.trovit.com.br/aluguel-casa-distrito-federal', {}),
-                ('mitula', 'https://imoveis.mitula.com.br/imoveis/aluguel-casas-2-quartos-brasilia', {}),
-                ('loft', 'https://loft.com.br/alugar/casas/df/brasilia', {}),
-                ('chavesnamao', 'https://www.chavesnamao.com.br/casas-para-alugar/df/', {}),
-              ]
+          H={'Accept-Language':'pt-BR,pt;q=0.9'}
+          def g(u, **h): return cr.get(u, impersonate='chrome', timeout=40, headers={**H, **h})
+          # VivaReal
+          u='https://glue-api.vivareal.com/v2/listings?addressCity=Bras%C3%ADlia&addressState=Distrito%20Federal&addressLocationId=BR%3EDistrito%20Federal%3ENULL%3EBrasilia&business=RENTAL&categoryPage=RESULT&listingType=USED&unitTypes=HOME&unitTypesV3=HOME&usageTypes=RESIDENTIAL&bedrooms=2&size=24&from=0&sort=updatedAt%20DESC&includeFields=search(result(listings(listing(id,title,address,bedrooms,bathrooms,parkingSpaces,usableAreas,totalAreas,pricingInfos,amenities,images,updatedAt,createdAt,advertiserContact,unitTypes),link(href),account(name)),totalCount))'
+          r=g(u, **{'x-domain':'www.vivareal.com.br','referer':'https://www.vivareal.com.br/','origin':'https://www.vivareal.com.br'})
+          print('VIVAREAL', r.status_code, r.text[:200])
+          if r.status_code==200:
+              res=r.json()['search']['result']; print('  total', res['totalCount'], 'n', len(res['listings']))
+              print('  sample', json.dumps(res['listings'][0], ensure_ascii=False)[:1500])
+          # OLX
+          r=g('https://www.olx.com.br/imoveis/aluguel/casas/estado-df?ros=2')
+          m=re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', r.text, re.S)
+          print('OLX', r.status_code, 'nextdata', bool(m))
+          if m:
+              d=json.loads(m.group(1)); s=json.dumps(d)
+              i=s.find('"ads"'); print('  ads ctx', s[i:i+1800])
+              print('  pp keys', list(d.get('props',{}).get('pageProps',{}).keys())[:20])
           else:
-              tests=[('url', url, {})]
-          for tag,u,h in tests:
-              try:
-                  r=cr.get(u, impersonate='chrome', timeout=40, headers={'Accept-Language':'pt-BR,pt;q=0.9', **h})
-                  resumo(tag, r)
-                  if 'glue' in tag and r.status_code==200:
-                      j=r.json(); res=j.get('search',{}).get('result',{}); print('   total', res.get('totalCount'), 'n', len(res.get('listings',[])))
-                      if res.get('listings'): print('   sample', json.dumps(res['listings'][0])[:800])
-                  if 'nestoria-api' in tag and r.status_code==200:
-                      j=r.json(); print('   nestoria', json.dumps(j)[:600])
-              except Exception as e: print(tag,'ERR',e)
+              # procurar JSON embutido
+              for pat in [r'"ads":\[', r'"listId"', r'olx\.com\.br/[a-z\-]+/[a-z\-]+-\d+']:
+                  mm=re.findall(pat, r.text); print('  pat', pat, len(mm), mm[:2])
+              i=r.text.find('"ads":'); print('  ctx', r.text[i:i+1500] if i>0 else r.text[:800])
+          # Nestoria
+          r=g('https://www.nestoria.com.br/distrito-federal/casas/aluguel?bedrooms=2&sort=newest')
+          t=r.text; print('NESTORIA', r.status_code)
+          for pat in [r'__NEXT_DATA__', r'window\.__INITIAL_STATE__', r'"listings"', r'data-listing', r'wimoveis', r'dfimoveis', r'quintoandar', r'"lister_url"', r'"source"']:
+              print('  ', pat, len(re.findall(pat, t)))
+          i=t.find('"listings"'); print('  ctx', t[i:i+1200] if i>0 else '')
+          # Mitula
+          r=g('https://imoveis.mitula.com.br/imoveis/aluguel-casas-2-quartos-brasilia')
+          t=r.text; print('MITULA', r.status_code)
+          for pat in [r'__NEXT_DATA__', r'"listings"', r'wimoveis', r'dfimoveis', r'data-source', r'application/ld\+json']:
+              print('  ', pat, len(re.findall(pat, t)))
+          m=re.search(r'<script type="application/ld\+json">(.*?)</script>', t, re.S); print('  ld', m.group(1)[:800] if m else None)
           PY
