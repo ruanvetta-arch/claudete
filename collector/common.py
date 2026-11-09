@@ -89,46 +89,64 @@ def to_int(v: Any) -> int | None:
 # ---------------------------------------------------------------------------
 
 REGIOES: dict[str, list[str]] = {
-    "Plano Piloto": ["asa sul", "asa norte", "plano piloto", "brasilia", "setor sudoeste", "sudoeste", "noroeste", "octogonal", "cruzeiro", "setor de mansoes", "vila planalto", "granja do torto", "sqs", "sqn", "shcgn", "sqsw", "sqnw", "sres"],
-    "Lago Sul": ["lago sul", "shis", "ql ", "qi "],
-    "Lago Norte": ["lago norte", "shin", "setor de habitacoes individuais norte", "taquari"],
-    "Jardim Botânico": ["jardim botanico", "jardim botânico", "altiplano", "sao bartolomeu", "quintas do sol", "ville de montagne", "estancia", "mansoes itaipu", "jardins mangueiral", "mangueiral"],
-    "Park Way": ["park way", "parkway", "smpw", "nucleo bandeirante"],
-    "Águas Claras": ["aguas claras", "areal", "arniqueira", "arniqueiras", "vereda da cruz"],
-    "Vicente Pires": ["vicente pires", "colonia agricola samambaia", "colonia agricola vicente pires"],
-    "Taguatinga": ["taguatinga"],
-    "Guará": ["guara", "guará", "qe ", "qi 2", "lucio costa", "setor de industria e abastecimento"],
-    "Sobradinho": ["sobradinho", "grande colorado", "colorado", "contagem", "nova colina", "mansoes colorado", "setor de mansoes sobradinho"],
-    "Planaltina": ["planaltina", "arapoanga", "vale do amanhecer", "mestre d'armas"],
-    "Samambaia": ["samambaia"],
-    "Ceilândia": ["ceilandia", "ceilândia", "sol nascente", "por do sol", "pôr do sol"],
+    "Lago Sul": ["lago sul", "shis", "shdb", "setor de habitacoes individuais sul", "setor habitacional dom bosco", "dom bosco", "setor de mansoes dom bosco", "smdb"],
+    "Lago Norte": ["lago norte", "shin", "setor de habitacoes individuais norte", "taquari", "setor de mansoes do lago norte", "smln"],
+    "Jardim Botânico": ["jardim botanico", "altiplano", "sao bartolomeu", "quintas do sol", "ville de montagne", "estancia", "mansoes itaipu", "jardins mangueiral", "mangueiral", "tororo", "setor habitacional tororo", "jardim botanico vi", "solar de brasilia", "privé"],
+    "Park Way": ["park way", "parkway", "smpw", "nucleo bandeirante", "setor de mansoes park way"],
+    "Plano Piloto": ["asa sul", "asa norte", "plano piloto", "setor sudoeste", "sudoeste", "noroeste", "octogonal", "cruzeiro", "vila planalto", "granja do torto", "sqs", "sqn", "shcgn", "sqsw", "sqnw", "sres", "shcs", "shcn", "setor de habitacoes coletivas", "vila telebrasilia", "setor militar urbano"],
+    "Águas Claras": ["aguas claras", "areal", "arniqueira", "arniqueiras", "vereda da cruz", "setor habitacional arniqueira"],
+    "Vicente Pires": ["vicente pires", "colonia agricola samambaia", "colonia agricola vicente pires", "setor habitacional vicente pires"],
+    "Taguatinga": ["taguatinga", "qnl", "qnm", "qsd", "qsa", "qsb", "qsc", "qse", "qsf", "qnj", "qng", "qnh", "qni", "qna", "qnb", "qnc", "qnd", "qne", "qnf"],
+    "Guará": ["guara", "qe ", "qi ", "lucio costa", "setor de industria e abastecimento"],
+    "Sobradinho": ["sobradinho", "grande colorado", "colorado", "contagem", "nova colina", "mansoes colorado", "setor de mansoes sobradinho", "alto da boa vista", "rk ", "vale das acacias"],
+    "Planaltina": ["planaltina", "arapoanga", "vale do amanhecer", "mestre d'armas", "mestre darmas"],
+    "Samambaia": ["samambaia", "setor de mansoes sudeste"],
+    "Ceilândia": ["ceilandia", "sol nascente", "por do sol", "qnn", "qno", "qnp", "qnq", "qnr", "expansao do setor o"],
     "Gama": ["gama"],
     "Santa Maria": ["santa maria"],
     "Recanto das Emas": ["recanto das emas"],
     "Riacho Fundo": ["riacho fundo"],
-    "São Sebastião": ["sao sebastiao", "são sebastião", "morro da cruz", "bela vista"],
-    "Paranoá": ["paranoa", "paranoá", "itapoa", "itapoã"],
-    "Candangolândia": ["candangolandia", "candangolândia"],
-    "Brazlândia": ["brazlandia", "brazlândia"],
-    "Varjão": ["varjao", "varjão"],
+    "São Sebastião": ["sao sebastiao", "morro da cruz", "bela vista", "residencial oeste", "vila nova"],
+    "Paranoá": ["paranoa", "itapoa"],
+    "Candangolândia": ["candangolandia"],
+    "Brazlândia": ["brazlandia"],
+    "Varjão": ["varjao"],
     "Fercal": ["fercal"],
-    "SIA / SCIA": ["scia", "estrutural", "sia "],
-    "SIA / SCIA": ["estrutural", "scia"],
+    "SIA / SCIA": ["estrutural", "scia", "sia "],
 }
 
-_ALL_PATTERNS = [(slug(p), reg) for reg, pats in REGIOES.items() for p in pats]
-# padrões mais longos primeiro (ex: "lago sul" antes de "brasilia")
+_ALL_PATTERNS = [(slug(p).replace("-", " ").strip(), reg) for reg, pats in REGIOES.items() for p in pats]
+# padrões mais longos primeiro
 _ALL_PATTERNS.sort(key=lambda x: -len(x[0]))
+# Genéricos que só valem como último recurso
+_GENERICOS = {"brasilia": "Plano Piloto", "distrito federal": None, "df": None}
+
+
+def _match(texto: str) -> str | None:
+    t = f" {slug(texto).replace('-', ' ')} "
+    for pat, reg in _ALL_PATTERNS:
+        if f" {pat} " in t or (pat.endswith(" ") and f" {pat}" in t):
+            return reg
+    return None
 
 
 def regiao_de(*candidatos: str | None) -> str:
-    """Devolve a região administrativa a partir de bairro/endereço/cidade."""
-    texto = " | ".join(slug(c) for c in candidatos if c)
-    texto = f" {texto.replace('-', ' ')} "
-    for pat, reg in _ALL_PATTERNS:
-        pat_s = f" {pat.replace('-', ' ').strip()} "
-        if pat_s in texto:
-            return reg
+    """Região administrativa a partir de (bairro, endereço, cidade...), nessa ordem de prioridade.
+
+    Termos genéricos ("Brasília") só decidem se nada mais bateu.
+    """
+    cands = [c for c in candidatos if c]
+    for c in cands:
+        s = slug(c).replace("-", " ").strip()
+        if s in _GENERICOS:
+            continue
+        r = _match(c)
+        if r:
+            return r
+    for c in cands:
+        s = slug(c).replace("-", " ").strip()
+        if s in _GENERICOS and _GENERICOS[s]:
+            return _GENERICOS[s]
     return "Outras regiões"
 
 

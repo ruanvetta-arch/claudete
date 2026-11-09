@@ -119,7 +119,7 @@ def _parse_pagina(html: str) -> list[dict]:
     return itens
 
 
-FOTO_RE = re.compile(r"https://img\.dfimoveis\.com\.br/fotos/(\d+)/[a-f0-9]+\.(?:webp|jpg)")
+FOTO_RE = re.compile(r"https://img\.dfimoveis\.com\.br/fotos/(\d+)/[a-f0-9]+\.(?:webp|jpe?g|png)")
 
 
 def fotos_detalhe(s, it: dict, max_fotos: int = 12) -> list[str]:
