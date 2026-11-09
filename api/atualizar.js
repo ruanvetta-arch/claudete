@@ -2,12 +2,25 @@
 // Precisa da variável de ambiente GITHUB_TOKEN (token fine-grained com permissão Actions: write no repo).
 module.exports = async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
+  const token = process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPO || "ruanvetta-arch/claudete";
+  if (req.method === "GET") {
+    // Diagnóstico só de leitura: o botão está ativo? (não dispara nada)
+    if (!token) { res.status(200).json({ ativo: false, motivo: "sem token" }); return; }
+    try {
+      const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/coletar.yml`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "claudete" },
+      });
+      res.status(200).json({ ativo: r.status === 200, github: r.status });
+    } catch (e) {
+      res.status(200).json({ ativo: false, motivo: String(e).slice(0, 120) });
+    }
+    return;
+  }
   if (req.method !== "POST") {
     res.status(405).json({ ok: false, mensagem: "Use POST." });
     return;
   }
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPO || "ruanvetta-arch/claudete";
   if (!token) {
     res.status(500).json({ ok: false, mensagem: "A busca manual ainda não foi ativada. As casas são atualizadas sozinhas todo dia às 7h e às 13h." });
     return;
