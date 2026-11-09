@@ -1,0 +1,28 @@
+name: Debug portal
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: URL para baixar
+        required: true
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r collector/requirements.txt
+      - run: |
+          python - <<'PY'
+          import sys; sys.path.insert(0,'collector')
+          from common import session, get
+          import os
+          s=session(); r=get(s, os.environ['URL'])
+          print('STATUS', r.status_code, len(r.text))
+          open('page.html','w').write(r.text)
+          PY
+        env:
+          URL: ${{ inputs.url }}
+      - uses: actions/upload-artifact@v4
+        with: { name: page, path: page.html }
