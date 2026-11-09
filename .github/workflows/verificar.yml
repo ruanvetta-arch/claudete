@@ -1,0 +1,11 @@
+name: Verificar site
+on:
+  workflow_dispatch:
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Botão Atualizar agora ativo?
+        run: curl -s https://claudete.vercel.app/api/atualizar; echo
+      - name: Status dos dados
+        run: curl -s https://claudete.vercel.app/data/status.json | head -c 600; echo
