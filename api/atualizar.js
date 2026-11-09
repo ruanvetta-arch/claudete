@@ -9,7 +9,7 @@ module.exports = async function handler(req, res) {
   const token = process.env.GITHUB_TOKEN;
   const repo = process.env.GITHUB_REPO || "ruanvetta-arch/claudete";
   if (!token) {
-    res.status(500).json({ ok: false, mensagem: "Atualização manual ainda não configurada (falta GITHUB_TOKEN na Vercel)." });
+    res.status(500).json({ ok: false, mensagem: "A busca manual ainda não foi ativada. As casas são atualizadas sozinhas todo dia às 7h e às 13h." });
     return;
   }
   try {
