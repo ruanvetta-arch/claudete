@@ -678,11 +678,13 @@ function aguardarNovosDados(){
         setTimeout(()=>faixa(null), 5000);
       }
     } catch(e){}
-    if(Date.now()-t0 > 12*60*1000){ clearInterval(sync.poll); sync.poll=null; sync.rodando=false; faixa(null); }
-  }, 15000);
+    // Se em 4 minutos nada mudou, para de mostrar a faixa (a lista continua válida)
+    if(Date.now()-t0 > 4*60*1000){ clearInterval(sync.poll); sync.poll=null; sync.rodando=false; faixa(null); }
+  }, 10000);
 }
 async function iniciarAtualizacao(forcar){
-  if(sync.rodando && !forcar) return;
+  if(sync.rodando) return;
+  if(forcar && status && status.gerado_em && (Date.now()-new Date(status.gerado_em)) < 2*60*1000){ faixa('Já está atualizado', 'ok'); setTimeout(()=>faixa(null), 3000); return; }
   sync.rodando = true;
   if(sync.extensao){
     // A extensão coleta os 3 sites de casa e, no fim, dispara a coleta do servidor
