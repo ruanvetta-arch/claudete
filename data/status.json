@@ -1,45 +1,45 @@
 {
-  "gerado_em": "2026-11-15T17:45:33-03:00",
-  "duracao_s": 4,
-  "total_ativos": 1519,
-  "novos_hoje": 0,
+  "gerado_em": "2026-11-16T13:42:10-03:00",
+  "duracao_s": 7,
+  "total_ativos": 1501,
+  "novos_hoje": 47,
   "portais": {
     "VivaReal": {
       "ok": true,
-      "total": 39,
-      "ultimo_sucesso": "2026-11-15T17:45:28-03:00",
+      "total": 40,
+      "ultimo_sucesso": "2026-11-16T13:42:03-03:00",
       "erro": null
     },
     "QuintoAndar": {
       "ok": true,
-      "total": 139,
-      "ultimo_sucesso": "2026-11-15T17:45:31-03:00",
+      "total": 141,
+      "ultimo_sucesso": "2026-11-16T13:42:05-03:00",
       "erro": null
     },
     "Chaves na Mão": {
       "ok": true,
-      "total": 19,
-      "ultimo_sucesso": "2026-11-15T17:45:32-03:00",
+      "total": 20,
+      "ultimo_sucesso": "2026-11-16T13:42:06-03:00",
       "erro": null
     },
     "DF Imóveis": {
       "ok": true,
-      "total": 766,
-      "ultimo_sucesso": "2026-11-14T14:35:36-03:00",
+      "total": 764,
+      "ultimo_sucesso": "2026-11-16T13:41:30-03:00",
       "erro": null,
       "origem": "coleta local"
     },
     "OLX": {
       "ok": true,
-      "total": 573,
-      "ultimo_sucesso": "2026-11-14T14:35:36-03:00",
+      "total": 581,
+      "ultimo_sucesso": "2026-11-16T13:41:30-03:00",
       "erro": null,
       "origem": "coleta local"
     },
     "Wimoveis": {
       "ok": true,
-      "total": 692,
-      "ultimo_sucesso": "2026-11-14T14:35:36-03:00",
+      "total": 656,
+      "ultimo_sucesso": "2026-11-16T13:41:30-03:00",
       "erro": null,
       "origem": "coleta local"
     }
