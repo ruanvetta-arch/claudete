@@ -1,25 +1,25 @@
 {
-  "gerado_em": "2026-11-17T20:18:51-03:00",
-  "duracao_s": 5,
-  "total_ativos": 1506,
-  "novos_hoje": 1,
+  "gerado_em": "2026-11-18T15:28:48-03:00",
+  "duracao_s": 6,
+  "total_ativos": 1517,
+  "novos_hoje": 6,
   "portais": {
     "VivaReal": {
       "ok": true,
-      "total": 42,
-      "ultimo_sucesso": "2026-11-17T20:18:46-03:00",
+      "total": 44,
+      "ultimo_sucesso": "2026-11-18T15:28:42-03:00",
       "erro": null
     },
     "QuintoAndar": {
       "ok": true,
-      "total": 135,
-      "ultimo_sucesso": "2026-11-17T20:18:49-03:00",
+      "total": 145,
+      "ultimo_sucesso": "2026-11-18T15:28:44-03:00",
       "erro": null
     },
     "Chaves na Mão": {
       "ok": true,
-      "total": 20,
-      "ultimo_sucesso": "2026-11-17T20:18:50-03:00",
+      "total": 23,
+      "ultimo_sucesso": "2026-11-18T15:28:44-03:00",
       "erro": null
     },
     "DF Imóveis": {
